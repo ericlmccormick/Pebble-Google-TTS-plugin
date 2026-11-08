@@ -1,4 +1,4 @@
-/* Google Cloud TTS plugin. Compatible with Home Assistant Bridge audio SDK v1.
+/* Universal TTS plugin. Compatible with Home Assistant Bridge audio SDK v1.
  * Key saved in Pebble.secureStorage; persistent bounded WAV chunks survive
  * plugin script restart between tts_prepare and tts_chunk actions.
  * WAV format: canonical mono 8000 Hz signed PCM16, chunk size 6000 bytes.
@@ -269,52 +269,207 @@ function ttsChunk(args){
     done:index===meta.count-1}};
 }
 
+
+/* Universal TTS provider adapters. The session, checksum and 8 kHz PCM
+ * transport above remains byte-compatible with existing Google TTS clients.
+ * Credentials are always kept in Pebble.secureStorage and never returned.
+ */
+var PROVIDERS=['google','gemini','elevenlabs','azure','homeassistant','openai'];
+var DEFAULTS={
+  google:{voice:'en-US-Wavenet-F',model:''},
+  gemini:{voice:'Kore',model:'gemini-2.5-flash-preview-tts'},
+  elevenlabs:{voice:'JBFqnCBsd6RMkjVDRZzb',model:'eleven_flash_v2_5'},
+  azure:{voice:'en-US-JennyNeural',model:''},
+  homeassistant:{voice:'tts.piper',model:''},
+  openai:{voice:'alloy',model:'gpt-4o-mini-tts'}
+};
+var DEFAULT_PROVIDER_KEY='universal_tts_default_provider_v1';
+var OPENAI_SHUTDOWN='2027-01-06';
+function selectedProvider(){var p=localStorage.getItem(DEFAULT_PROVIDER_KEY)||'google';return PROVIDERS.indexOf(p)>=0?p:'google';}
+function keyFor(p){return p==='google'?KEY:'universal_tts_'+p+'_key_v1';}
+function propFor(p,name){return 'universal_tts_'+p+'_'+name+'_v1';}
+function optionFor(p,name){return localStorage.getItem(propFor(p,name))||(name==='voice'&&p==='google'?configuredVoice():'')||(DEFAULTS[p]&&DEFAULTS[p][name])||'';}
+function validatedProvider(p){return typeof p==='string'&&PROVIDERS.indexOf(p)>=0;}
+function providerName(p){return {google:'Google Cloud',gemini:'Gemini TTS',elevenlabs:'ElevenLabs',azure:'Microsoft Azure',homeassistant:'Home Assistant',openai:'OpenAI Speech (deprecated)'}[p]||p;}
+function validSetting(s){return typeof s==='string'&&s.length>0&&s.length<=160&&/^[\w.-]+$/.test(s);}
+function validEndpoint(url){
+  if(typeof url!=='string'||url.length>240)return false;
+  // HTTPS is recommended; insecure HTTP is explicitly allowed only for
+  // private LAN addresses as permitted by Pebble's LocalNetwork permission.
+  return /^https:\/\/[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:\/)?$/.test(url)||
+    /^http:\/\/(?:(?:10|127)\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|localhost)(?::[0-9]{1,5})?(?:\/)?$/.test(url);
+}
+async function hasProviderCredentials(p){
+  var k=await Pebble.secureStorage.getItem(keyFor(p));
+  if(!k)return false;
+  if(p==='azure'&&!/^[a-z0-9-]{2,50}$/.test(optionFor(p,'region')))return false;
+  if(p==='homeassistant'&&!validEndpoint(optionFor(p,'endpoint')))return false;
+  return true;
+}
+async function providerSummary(){
+  var arr=[];
+  for(var i=0;i<PROVIDERS.length;i++){
+    var p=PROVIDERS[i];arr.push({id:p,name:providerName(p),configured:await hasProviderCredentials(p),
+      voice:optionFor(p,'voice'),model:optionFor(p,'model'),
+      region:p==='azure'?optionFor(p,'region'):undefined,
+      endpoint:p==='homeassistant'?optionFor(p,'endpoint'):undefined,
+      deprecated:p==='openai',shutdown:p==='openai'?OPENAI_SHUTDOWN:undefined});
+  }
+  return arr;
+}
+function rawPcm16(bytes,rate){
+  if(!bytes||bytes.length<2||bytes.length%2)return failure('PLUGIN_UNAVAILABLE','Invalid raw PCM16 audio.');
+  if(!rate||rate<8000||rate>48000)return failure('PLUGIN_UNAVAILABLE','Unsupported PCM rate.');
+  var view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+  var pcm=new Int16Array(bytes.length/2);
+  for(var i=0;i<pcm.length;i++)pcm[i]=view.getInt16(i*2,true);
+  return {ok:true,samples:pcm,rate:rate};
+}
+function bytesToPcm(bytes,rate){
+  if(bytes.length>MAX_TTS_BYTES||bytes.length<2)return failure('PLUGIN_UNAVAILABLE','TTS audio exceeds limit or is empty.');
+  if(bytes.length>=44&&String.fromCharCode(bytes[0],bytes[1],bytes[2],bytes[3])==='RIFF')return wavPcm16(bytes);
+  return rawPcm16(bytes,rate);
+}
+async function binaryResponse(response,p){
+  if(!response.ok)return remoteFailure(response.status,p);
+  if(typeof response.arrayBuffer!=='function')return failure('PLUGIN_UNAVAILABLE','Binary audio fetch not supported on this phone runtime.');
+  return {ok:true,bytes:new Uint8Array(await response.arrayBuffer())};
+}
+function remoteFailure(status,p){
+  if(status===401||status===403)return failure('AUTH_REQUIRED',providerName(p)+' rejected credentials or access to this voice/format.');
+  if(status===429)return failure('RATE_LIMITED',providerName(p)+' quota or rate limit exceeded.');
+  if(status===400||status===422)return failure('INVALID_ARGS',providerName(p)+' rejected the voice, model or speech request.');
+  return failure('PLUGIN_UNAVAILABLE',providerName(p)+' HTTP '+status);
+}
+function xmlText(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');}
+async function synthProvider(p,text,voice,token){
+  var response,body,result,bytes,parsed,region,model;
+  if(p==='google'){
+    if(!validVoice(voice))return failure('INVALID_ARGS','Invalid Google voice.');
+    var audioConfig={audioEncoding:'LINEAR16',sampleRateHertz:16000};
+    if(voice.indexOf('-Chirp3-HD-')<0)audioConfig.speakingRate=0.92;
+    response=await fetch('https://texttospeech.googleapis.com/v1/text:synthesize',{
+      method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':token},
+      body:JSON.stringify({input:{text:text},voice:{languageCode:voice.split('-').slice(0,2).join('-'),name:voice},audioConfig:audioConfig})
+    });
+    if(!response.ok)return remoteFailure(response.status,p);
+    result=await response.json();
+    if(!result||!result.audioContent)return failure('PLUGIN_UNAVAILABLE','Google returned no audio.');
+    bytes=base64Decode(result.audioContent);
+    parsed=bytesToPcm(bytes,16000);
+  }else if(p==='gemini'){
+    if(!validSetting(voice))return failure('INVALID_ARGS','Invalid Gemini voice.');
+    model=optionFor(p,'model');
+    if(!/^gemini-[a-zA-Z0-9_.-]+$/.test(model))return failure('INVALID_ARGS','Invalid Gemini TTS model.');
+    body={contents:[{parts:[{text:text}]}],generationConfig:{responseModalities:['AUDIO'],
+      speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}}};
+    response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent',{
+      method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':token},body:JSON.stringify(body)
+    });
+    if(!response.ok)return remoteFailure(response.status,p);
+    result=await response.json();
+    var parts=result&&result.candidates&&result.candidates[0]&&result.candidates[0].content&&result.candidates[0].content.parts;
+    var audioPart=parts&&parts.find(function(x){return x.inlineData&&x.inlineData.data;});
+    if(!audioPart)return failure('PLUGIN_UNAVAILABLE','Gemini returned no audio (check TTS model).');
+    bytes=base64Decode(audioPart.inlineData.data);
+    var mime=String(audioPart.inlineData.mimeType||''),found=/rate=(\d+)/.exec(mime);
+    parsed=bytesToPcm(bytes,found?Number(found[1]):24000);
+  }else if(p==='elevenlabs'){
+    if(!validSetting(voice))return failure('INVALID_ARGS','Invalid ElevenLabs voice ID.');
+    model=optionFor(p,'model');
+    if(!validSetting(model))return failure('INVALID_ARGS','Invalid ElevenLabs model.');
+    response=await fetch('https://api.elevenlabs.io/v1/text-to-speech/'+encodeURIComponent(voice)+'?output_format=pcm_16000',{
+      method:'POST',headers:{'Content-Type':'application/json','xi-api-key':token},
+      body:JSON.stringify({text:text,model_id:model})
+    });
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,16000);
+  }else if(p==='azure'){
+    region=optionFor(p,'region').toLowerCase();
+    if(!/^[a-z0-9-]{2,50}$/.test(region)||!validSetting(voice))
+      return failure('INVALID_ARGS','Configure an Azure region and voice.');
+    var lang=voice.slice(0,5);
+    body='<speak version="1.0" xml:lang="'+xmlText(lang)+'"><voice name="'+xmlText(voice)+'">'+xmlText(text)+'</voice></speak>';
+    response=await fetch('https://'+region+'.tts.speech.microsoft.com/cognitiveservices/v1',{
+      method:'POST',headers:{'Content-Type':'application/ssml+xml','Ocp-Apim-Subscription-Key':token,
+        'X-Microsoft-OutputFormat':'riff-8khz-16bit-mono-pcm','User-Agent':'PebbleUniversalTTS'},
+      body:body
+    });
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,8000);
+  }else if(p==='homeassistant'){
+    var endpoint=optionFor(p,'endpoint').replace(/\/$/,'');
+    if(!validEndpoint(endpoint)||!/^tts\.[a-z0-9_]+$/.test(voice))
+      return failure('INVALID_ARGS','Configure a valid Home Assistant URL and TTS entity.');
+    response=await fetch(endpoint+'/api/tts_get_url',{
+      method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({engine_id:voice,message:text,options:{
+        preferred_format:'wav',preferred_sample_rate:16000,preferred_sample_channels:1,preferred_sample_bytes:2}})
+    });
+    if(!response.ok)return remoteFailure(response.status,p);
+    result=await response.json();
+    // Ignore external absolute URLs. Resolve the server-provided path against
+    // the configured origin so the HA credential cannot leak to another host.
+    var path=result&&result.path;
+    if(typeof path!=='string'||!/^\/api\/tts_proxy\/[A-Za-z0-9_./%-]+$/.test(path))
+      return failure('PLUGIN_UNAVAILABLE','Home Assistant returned an unexpected audio path.');
+    response=await fetch(endpoint+path,{headers:{Authorization:'Bearer '+token}});
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    if(result.bytes.length<44||String.fromCharCode.apply(null,Array.prototype.slice.call(result.bytes,0,4))!=='RIFF')
+      return failure('PLUGIN_UNAVAILABLE','Home Assistant did not return WAV; select a TTS engine supporting preferred_format=wav.');
+    parsed=bytesToPcm(result.bytes,16000);
+  }else if(p==='openai'){
+    // OpenAI's Speech endpoint is retired January 6, 2027.
+    // The replacement gpt-realtime-2.1-mini uses WebSockets/WebRTC, not /audio/speech.
+    if(Date.now()>=Date.parse('2027-01-06T00:00:00Z'))
+      return failure('PLUGIN_UNAVAILABLE','OpenAI Speech API was scheduled to retire Jan 6, 2027. Select another provider.');
+    if(!validSetting(voice))return failure('INVALID_ARGS','Invalid OpenAI voice.');
+    model=optionFor(p,'model');
+    if(['tts-1','tts-1-hd','gpt-4o-mini-tts','gpt-4o-mini-tts-2025-12-15'].indexOf(model)<0)
+      return failure('INVALID_ARGS','Select a supported legacy OpenAI Speech model.');
+    response=await fetch('https://api.openai.com/v1/audio/speech',{
+      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({model:model,voice:voice,input:text,response_format:'pcm'})
+    });
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,24000);
+  }else{return failure('INVALID_ARGS','Unknown TTS provider.');}
+  if(!parsed.ok)return failure('PLUGIN_UNAVAILABLE',parsed.error||parsed.message||'Invalid speech audio.');
+  var pcm=resample8k(parsed.samples,parsed.rate);
+  var session=packageWavSession(pcm,p);
+  if(session.ok){
+    session.data.audio_diagnostics.input_rate=parsed.rate;
+    session.data.audio_diagnostics.voice=voice;
+    session.data.audio_diagnostics.input=pcmStats(parsed.samples,parsed.rate);
+    session.data.provider=p;
+    if(p==='openai')session.data.deprecation_warning='OpenAI Speech models shut down January 6, 2027; replacement uses Realtime API.';
+  }
+  return session;
+}
 async function prepareTts(args){
-  if(args.test_tone===true)return packageWavSession(bridgeTestTone(),'google_tts_test_tone');
+  if(args.test_tone===true)return packageWavSession(bridgeTestTone(),'universal_tts_test_tone');
   if(typeof args.text!=='string'||!args.text.trim()||args.text.length>500)
     return failure('INVALID_ARGS','Speech text must contain 1–500 characters.');
-  var voice=args.voice===undefined?configuredVoice():args.voice;
-  if(!validVoice(voice))return failure('INVALID_ARGS','Invalid Google voice name.');
-  var token=await Pebble.secureStorage.getItem(KEY);
-  if(!token)return failure('AUTH_REQUIRED','Configure Google TTS API key in plugin settings.');
-  try{
-    var audioConfig={audioEncoding:'LINEAR16',sampleRateHertz:16000};
-    // Chirp 3 HD voices do not support standard speakingRate.
-    if(voice.indexOf('-Chirp3-HD-')<0)audioConfig.speakingRate=0.92;
-    var response=await fetch('https://texttospeech.googleapis.com/v1/text:synthesize',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-goog-api-key':token},
-      body:JSON.stringify({input:{text:args.text},voice:{languageCode:voice.split('-').slice(0,2).join('-'),name:voice},audioConfig:audioConfig})
-    });
-    if(!response.ok){
-      if(response.status===401||response.status===403)return failure('AUTH_REQUIRED','Google TTS key or permission rejected.');
-      if(response.status===429)return failure('RATE_LIMITED','Google TTS quota or rate limit exceeded.');
-      if(response.status===400)return failure('INVALID_ARGS','Google TTS rejected the voice or request.');
-      return failure('PLUGIN_UNAVAILABLE','Google TTS HTTP '+response.status);
-    }
-    var result=await response.json();
-    if(!result||typeof result.audioContent!=='string')
-      return failure('PLUGIN_UNAVAILABLE','Google TTS returned no WAV audio.');
-    var bytes=base64Decode(result.audioContent);
-    if(bytes.length<44||bytes.length>MAX_TTS_BYTES)
-      return failure('PLUGIN_UNAVAILABLE','Google TTS audio is empty or exceeds size limit.');
-    var parsed=wavPcm16(bytes);
-    if(!parsed.ok)return failure('PLUGIN_UNAVAILABLE',parsed.error);
-    var pcm=resample8k(parsed.samples,parsed.rate);
-    var session=packageWavSession(pcm,'google_cloud');
-    if(session.ok){
-      session.data.audio_diagnostics.input_rate=parsed.rate;
-      session.data.audio_diagnostics.voice=voice;
-      session.data.audio_diagnostics.binary_transport='base64_json';
-      session.data.audio_diagnostics.input=pcmStats(parsed.samples,parsed.rate);
-    }
-    return session;
-  }catch(e){return failure('PLUGIN_UNAVAILABLE','Google TTS failed to synthesize or decode audio.');}
+  var p=args.provider===undefined?selectedProvider():args.provider;
+  if(!validatedProvider(p))return failure('INVALID_ARGS','Unknown TTS provider.');
+  var voice=args.voice===undefined?optionFor(p,'voice'):args.voice;
+  if(typeof voice!=='string'||voice.length>160||!voice.trim())
+    return failure('INVALID_ARGS','Invalid voice.');
+  var token=await Pebble.secureStorage.getItem(keyFor(p));
+  if(!token)return failure('AUTH_REQUIRED','Configure '+providerName(p)+' in Universal TTS settings.');
+  try{return await synthProvider(p,args.text,voice,token);}
+  catch(e){return failure('PLUGIN_UNAVAILABLE',providerName(p)+' synthesis/decoding failed.');}
 }
 Pebble.registerActionHandler(async function(request,respond){
   var args=request.args||{},r;
   switch(request.action){
-    case 'get_config':r={ok:true,data:{configured:!!(await Pebble.secureStorage.getItem(KEY)),voice:configuredVoice(),audio_format:'pcm_s16le_wav',sample_rate:8000}};break;
+    case 'get_config':{
+      var p=selectedProvider();
+      r={ok:true,data:{configured:await hasProviderCredentials(p),voice:optionFor(p,'voice'),
+        provider:p,providers:await providerSummary(),audio_format:'pcm_s16le_wav',sample_rate:8000,
+        openai_speech_shutdown:OPENAI_SHUTDOWN,openai_replacement:'gpt-realtime-2.1-mini (Realtime API)'}};
+      break;
+    }
     case 'tts_prepare':r=await prepareTts(args);break;
     case 'tts_chunk':r=ttsChunk(args);break;
     case 'tts_release':{
@@ -330,24 +485,47 @@ Pebble.registerActionHandler(async function(request,respond){
   respond.ok({text:JSON.stringify(r.data).slice(0,20000)});
 });
 Pebble.registerConfigHandler(async function(message,respond){
-  var m=message||{};
+  var m=message||{},p=m.provider===undefined?selectedProvider():m.provider;
+  if(!validatedProvider(p)){respond({ok:false,error:'Unknown provider'});return;}
   if(m.type==='status'){
-    respond({ok:true,configured:!!(await Pebble.secureStorage.getItem(KEY)),voice:configuredVoice()});return;
+    respond({ok:true,provider:selectedProvider(),providers:await providerSummary()});return;
   }
   if(m.type==='save'){
-    if(!validVoice(m.voice)){respond({ok:false,error:'Select a valid Google TTS voice.'});return;}
-    var key=typeof m.api_key==='string'?m.api_key.trim():'';
-    if(key)await Pebble.secureStorage.setItem(KEY,key);
-    if(!(await Pebble.secureStorage.getItem(KEY))){respond({ok:false,error:'Enter a Google Cloud TTS API key.'});return;}
-    localStorage.setItem(VOICE_KEY,m.voice);
-    respond({ok:true,configured:true,voice:m.voice});return;
+    if(typeof m.voice!=='string'||!m.voice.trim()||m.voice.length>160){
+      respond({ok:false,error:'Enter a voice name or ID.'});return;
+    }
+    if(p==='google'&&!validVoice(m.voice)){respond({ok:false,error:'Invalid Google Cloud voice.'});return;}
+    if(p==='homeassistant'&&!/^tts\.[a-z0-9_]+$/.test(m.voice)){respond({ok:false,error:'Enter a TTS entity such as tts.piper.'});return;}
+    if(m.region!==undefined&&p==='azure'&&!/^[a-z0-9-]{2,50}$/.test(m.region)){respond({ok:false,error:'Enter a valid Azure region.'});return;}
+    if(m.endpoint!==undefined&&p==='homeassistant'&&!validEndpoint(m.endpoint)){respond({ok:false,error:'Enter a valid HA URL (HTTPS, or private LAN HTTP).'});return;}
+    if(typeof m.api_key==='string'&&m.api_key.trim())await Pebble.secureStorage.setItem(keyFor(p),m.api_key.trim());
+    if(!(await Pebble.secureStorage.getItem(keyFor(p)))){respond({ok:false,error:'Enter credentials for '+providerName(p)+'.'});return;}
+    if(p==='google')localStorage.setItem(VOICE_KEY,m.voice);
+    localStorage.setItem(propFor(p,'voice'),m.voice);
+    if(p==='azure'&&typeof m.region==='string')localStorage.setItem(propFor(p,'region'),m.region);
+    if(p==='homeassistant'&&typeof m.endpoint==='string')localStorage.setItem(propFor(p,'endpoint'),m.endpoint);
+    if((p==='gemini'||p==='elevenlabs'||p==='openai')&&typeof m.model==='string'&&m.model)
+      localStorage.setItem(propFor(p,'model'),m.model);
+    if(m.make_default!==false)localStorage.setItem(DEFAULT_PROVIDER_KEY,p);
+    respond({ok:true,provider:p,default_provider:selectedProvider(),voice:m.voice,configured:await hasProviderCredentials(p)});
+    return;
   }
   if(m.type==='forget'){
-    await Pebble.secureStorage.removeItem(KEY);
-    localStorage.removeItem(VOICE_KEY);
+    await Pebble.secureStorage.removeItem(keyFor(p));
+    localStorage.removeItem(propFor(p,'voice'));
+    localStorage.removeItem(propFor(p,'model'));
+    localStorage.removeItem(propFor(p,'region'));
+    localStorage.removeItem(propFor(p,'endpoint'));
+    if(p==='google')localStorage.removeItem(VOICE_KEY);
     cleanTtsSessions().forEach(deleteTtsSession);
     localStorage.removeItem(TTS_INDEX_KEY);
-    respond({ok:true});return;
+    respond({ok:true,provider:p});return;
+  }
+  if(m.type==='test'){
+    var r=await prepareTts({provider:p,text:'Testing Universal T T S on Pebble.'});
+    if(r.ok){deleteTtsSession(r.data.session_id);localStorage.setItem(TTS_INDEX_KEY,JSON.stringify(sessionList().filter(function(x){return x!==r.data.session_id;})));respond({ok:true,duration_ms:r.data.audio_diagnostics.output.duration_ms,provider:p});}
+    else respond({ok:false,error:r.message,code:r.code});
+    return;
   }
   respond({ok:false,error:'Unknown configuration request.'});
 });
