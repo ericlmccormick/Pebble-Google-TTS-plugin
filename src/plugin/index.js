@@ -1,14 +1,11 @@
-/* Universal TTS plugin. Compatible with Home Assistant Bridge audio SDK v1.
+/* Universal TTS plugin. Provider-independent verified WAV session transport.
  * Key saved in Pebble.secureStorage; persistent bounded WAV chunks survive
  * plugin script restart between tts_prepare and tts_chunk actions.
  * WAV format: canonical mono 8000 Hz signed PCM16, chunk size 6000 bytes.
  */
 'use strict';
-var KEY='google_tts_cloud_api_key_v1';
-var VOICE_KEY='google_tts_voice_v1';
-var DEFAULT_VOICE='en-US-Wavenet-F';
+var KEY='universal_tts_google_key_v1';
 function failure(code,message){return {ok:false,code:code,message:message};}
-function configuredVoice(){return localStorage.getItem(VOICE_KEY)||DEFAULT_VOICE;}
 function validVoice(name){return typeof name==='string'&&/^[a-z]{2,3}-[A-Z]{2}-[A-Za-z0-9-]{2,80}$/.test(name);}
 function base64Decode(input){
   if(typeof input!=='string'||!input||input.length>3000000)throw Error('Invalid base64 audio size');
@@ -30,7 +27,7 @@ function pluginDecodeBase64(input){
 }
 
 var MAX_TTS_BYTES=1500000,TTS_CHUNK_BYTES=6000;
-var TTS_INDEX_KEY='google_tts_sessions_v1',TTS_TTL_MS=180000;
+var TTS_INDEX_KEY='universal_tts_sessions_v1',TTS_TTL_MS=180000;
 function base64Bytes(bytes) {
   var abc='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
   var out='';
@@ -41,7 +38,7 @@ function base64Bytes(bytes) {
   }
   return out;
 }
-function sessionKey(id){return 'google_tts_v1_'+id;}
+function sessionKey(id){return 'universal_tts_v1_'+id;}
 function sessionList(){
   try{var value=JSON.parse(localStorage.getItem(TTS_INDEX_KEY)||'[]');
     return Array.isArray(value)?value:[];}catch(e){return [];}
@@ -166,7 +163,7 @@ function resample8k(samples,rate) {
 }
 // Gemini consumes a canonical 44-byte WAV header followed by signed,
 // little-endian 8kHz mono PCM16 samples. Keep ADPCM encoding in the phone app.
-function geminiWav8k(samples) {
+function canonicalWav8k(samples) {
   var out=new Uint8Array(44+samples.length*2),v=new DataView(out.buffer);
   function tag(p,t){for(var i=0;i<t.length;i++)out[p+i]=t.charCodeAt(i);}
   tag(0,'RIFF');v.setUint32(4,out.length-8,true);tag(8,'WAVE');
@@ -223,14 +220,14 @@ function inspectPcmByteOrder(bytes,offset,count) {
     big_endian:{mean_step:Math.round(beDiff/Math.max(1,n-1)),
       rms:Math.round(Math.sqrt(bePower/Math.max(1,n))),crossings:beCross}};
 }
-function bridgeTestTone() {
+function testTone() {
   var samples=new Int16Array(8000*7);
   for(var i=0;i<samples.length;i++)
     samples[i]=Math.round(9000*Math.sin(2*Math.PI*440*i/8000));
   return samples;
 }
 function packageWavSession(pcm,source) {
-  var wav=geminiWav8k(pcm);
+  var wav=canonicalWav8k(pcm);
   if(wav.length>MAX_TTS_BYTES)
     return failure('PLUGIN_UNAVAILABLE','TTS PCM audio exceeds size limit');
   var session=storeTtsSession(wav);
@@ -274,23 +271,21 @@ function ttsChunk(args){
  * transport above remains byte-compatible with existing Google TTS clients.
  * Credentials are always kept in Pebble.secureStorage and never returned.
  */
-var PROVIDERS=['google','gemini','elevenlabs','azure','homeassistant','openai'];
+var PROVIDERS=['google','gemini','elevenlabs','azure','homeassistant'];
 var DEFAULTS={
   google:{voice:'en-US-Wavenet-F',model:''},
   gemini:{voice:'Kore',model:'gemini-2.5-flash-preview-tts'},
   elevenlabs:{voice:'JBFqnCBsd6RMkjVDRZzb',model:'eleven_flash_v2_5'},
   azure:{voice:'en-US-JennyNeural',model:''},
-  homeassistant:{voice:'tts.piper',model:''},
-  openai:{voice:'alloy',model:'gpt-4o-mini-tts'}
+  homeassistant:{voice:'tts.piper',model:''}
 };
 var DEFAULT_PROVIDER_KEY='universal_tts_default_provider_v1';
-var OPENAI_SHUTDOWN='2027-01-06';
 function selectedProvider(){var p=localStorage.getItem(DEFAULT_PROVIDER_KEY)||'google';return PROVIDERS.indexOf(p)>=0?p:'google';}
 function keyFor(p){return p==='google'?KEY:'universal_tts_'+p+'_key_v1';}
 function propFor(p,name){return 'universal_tts_'+p+'_'+name+'_v1';}
-function optionFor(p,name){return localStorage.getItem(propFor(p,name))||(name==='voice'&&p==='google'?configuredVoice():'')||(DEFAULTS[p]&&DEFAULTS[p][name])||'';}
+function optionFor(p,name){return localStorage.getItem(propFor(p,name))||(DEFAULTS[p]&&DEFAULTS[p][name])||'';}
 function validatedProvider(p){return typeof p==='string'&&PROVIDERS.indexOf(p)>=0;}
-function providerName(p){return {google:'Google Cloud',gemini:'Gemini TTS',elevenlabs:'ElevenLabs',azure:'Microsoft Azure',homeassistant:'Home Assistant',openai:'OpenAI Speech (deprecated)'}[p]||p;}
+function providerName(p){return {google:'Google Cloud',gemini:'Gemini TTS',elevenlabs:'ElevenLabs',azure:'Microsoft Azure',homeassistant:'Home Assistant'}[p]||p;}
 function validSetting(s){return typeof s==='string'&&s.length>0&&s.length<=160&&/^[\w.-]+$/.test(s);}
 function validEndpoint(url){
   if(typeof url!=='string'||url.length>240)return false;
@@ -313,7 +308,7 @@ async function providerSummary(){
       voice:optionFor(p,'voice'),model:optionFor(p,'model'),
       region:p==='azure'?optionFor(p,'region'):undefined,
       endpoint:p==='homeassistant'?optionFor(p,'endpoint'):undefined,
-      deprecated:p==='openai',shutdown:p==='openai'?OPENAI_SHUTDOWN:undefined});
+      audio_format:'pcm_s16le_wav'});
   }
   return arr;
 }
@@ -418,21 +413,6 @@ async function synthProvider(p,text,voice,token){
     if(result.bytes.length<44||String.fromCharCode.apply(null,Array.prototype.slice.call(result.bytes,0,4))!=='RIFF')
       return failure('PLUGIN_UNAVAILABLE','Home Assistant did not return WAV; select a TTS engine supporting preferred_format=wav.');
     parsed=bytesToPcm(result.bytes,16000);
-  }else if(p==='openai'){
-    // OpenAI's Speech endpoint is retired January 6, 2027.
-    // The replacement gpt-realtime-2.1-mini uses WebSockets/WebRTC, not /audio/speech.
-    if(Date.now()>=Date.parse('2027-01-06T00:00:00Z'))
-      return failure('PLUGIN_UNAVAILABLE','OpenAI Speech API was scheduled to retire Jan 6, 2027. Select another provider.');
-    if(!validSetting(voice))return failure('INVALID_ARGS','Invalid OpenAI voice.');
-    model=optionFor(p,'model');
-    if(['tts-1','tts-1-hd','gpt-4o-mini-tts','gpt-4o-mini-tts-2025-12-15'].indexOf(model)<0)
-      return failure('INVALID_ARGS','Select a supported legacy OpenAI Speech model.');
-    response=await fetch('https://api.openai.com/v1/audio/speech',{
-      method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body:JSON.stringify({model:model,voice:voice,input:text,response_format:'pcm'})
-    });
-    result=await binaryResponse(response,p);if(!result.ok)return result;
-    parsed=bytesToPcm(result.bytes,24000);
   }else{return failure('INVALID_ARGS','Unknown TTS provider.');}
   if(!parsed.ok)return failure('PLUGIN_UNAVAILABLE',parsed.error||parsed.message||'Invalid speech audio.');
   var pcm=resample8k(parsed.samples,parsed.rate);
@@ -442,17 +422,15 @@ async function synthProvider(p,text,voice,token){
     session.data.audio_diagnostics.voice=voice;
     session.data.audio_diagnostics.input=pcmStats(parsed.samples,parsed.rate);
     session.data.provider=p;
-    if(p==='openai')session.data.deprecation_warning='OpenAI Speech models shut down January 6, 2027; replacement uses Realtime API.';
   }
   return session;
 }
 async function prepareTts(args){
-  if(args.test_tone===true)return packageWavSession(bridgeTestTone(),'universal_tts_test_tone');
+  if(args.test_tone===true)return packageWavSession(testTone(),'universal_tts_test_tone');
   if(typeof args.text!=='string'||!args.text.trim()||args.text.length>500)
     return failure('INVALID_ARGS','Speech text must contain 1–500 characters.');
-  var p=args.provider===undefined?selectedProvider():args.provider;
-  if(!validatedProvider(p))return failure('INVALID_ARGS','Unknown TTS provider.');
-  var voice=args.voice===undefined?optionFor(p,'voice'):args.voice;
+  var p=selectedProvider();
+  var voice=optionFor(p,'voice');
   if(typeof voice!=='string'||voice.length>160||!voice.trim())
     return failure('INVALID_ARGS','Invalid voice.');
   var token=await Pebble.secureStorage.getItem(keyFor(p));
@@ -463,20 +441,15 @@ async function prepareTts(args){
 Pebble.registerActionHandler(async function(request,respond){
   var args=request.args||{},r;
   switch(request.action){
-    case 'universal_config':request.action='get_config';
-    case 'get_config':
-    {
+    case 'tts_status':{
       var p=selectedProvider();
-      r={ok:true,data:{configured:await hasProviderCredentials(p),voice:optionFor(p,'voice'),
-        provider:p,providers:await providerSummary(),audio_format:'pcm_s16le_wav',sample_rate:8000,
-        openai_speech_shutdown:OPENAI_SHUTDOWN,openai_replacement:'gpt-realtime-2.1-mini (Realtime API)'}};
+      r={ok:true,data:{configured:await hasProviderCredentials(p),
+        provider:p,voice:optionFor(p,'voice'),audio_format:'pcm_s16le_wav',
+        sample_rate:8000,version:1}};
       break;
     }
-    case 'universal_prepare':
     case 'tts_prepare':r=await prepareTts(args);break;
-    case 'universal_chunk':
     case 'tts_chunk':r=ttsChunk(args);break;
-    case 'universal_release':
     case 'tts_release':{
       var id=String(args.session_id||'');
       if(!/^tts[a-z0-9]+$/.test(id)){r=failure('INVALID_ARGS','Invalid session_id');break;}
@@ -505,11 +478,10 @@ Pebble.registerConfigHandler(async function(message,respond){
     if(m.endpoint!==undefined&&p==='homeassistant'&&!validEndpoint(m.endpoint)){respond({ok:false,error:'Enter a valid HA URL (HTTPS, or private LAN HTTP).'});return;}
     if(typeof m.api_key==='string'&&m.api_key.trim())await Pebble.secureStorage.setItem(keyFor(p),m.api_key.trim());
     if(!(await Pebble.secureStorage.getItem(keyFor(p)))){respond({ok:false,error:'Enter credentials for '+providerName(p)+'.'});return;}
-    if(p==='google')localStorage.setItem(VOICE_KEY,m.voice);
     localStorage.setItem(propFor(p,'voice'),m.voice);
     if(p==='azure'&&typeof m.region==='string')localStorage.setItem(propFor(p,'region'),m.region);
     if(p==='homeassistant'&&typeof m.endpoint==='string')localStorage.setItem(propFor(p,'endpoint'),m.endpoint);
-    if((p==='gemini'||p==='elevenlabs'||p==='openai')&&typeof m.model==='string'&&m.model)
+    if((p==='gemini'||p==='elevenlabs')&&typeof m.model==='string'&&m.model)
       localStorage.setItem(propFor(p,'model'),m.model);
     if(m.make_default!==false)localStorage.setItem(DEFAULT_PROVIDER_KEY,p);
     respond({ok:true,provider:p,default_provider:selectedProvider(),voice:m.voice,configured:await hasProviderCredentials(p)});
@@ -521,13 +493,16 @@ Pebble.registerConfigHandler(async function(message,respond){
     localStorage.removeItem(propFor(p,'model'));
     localStorage.removeItem(propFor(p,'region'));
     localStorage.removeItem(propFor(p,'endpoint'));
-    if(p==='google')localStorage.removeItem(VOICE_KEY);
     cleanTtsSessions().forEach(deleteTtsSession);
     localStorage.removeItem(TTS_INDEX_KEY);
     respond({ok:true,provider:p});return;
   }
   if(m.type==='test'){
-    var r=await prepareTts({provider:p,text:'Testing Universal T T S on Pebble.'});
+    var previousProvider=selectedProvider();
+    localStorage.setItem(DEFAULT_PROVIDER_KEY,p);
+    var r;
+    try{r=await prepareTts({text:'Testing Universal T T S on Pebble.'});}
+    finally{localStorage.setItem(DEFAULT_PROVIDER_KEY,previousProvider);}
     if(r.ok){deleteTtsSession(r.data.session_id);localStorage.setItem(TTS_INDEX_KEY,JSON.stringify(sessionList().filter(function(x){return x!==r.data.session_id;})));respond({ok:true,duration_ms:r.data.audio_diagnostics.output.duration_ms,provider:p});}
     else respond({ok:false,error:r.message,code:r.code});
     return;
