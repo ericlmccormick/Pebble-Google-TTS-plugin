@@ -46,13 +46,12 @@ a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}
       <option value="elevenlabs">ElevenLabs</option>
       <option value="azure">Microsoft Azure Speech</option>
       <option value="homeassistant">Home Assistant / Piper (local)</option>
-      <option value="openai">OpenAI Speech — retires Jan 6, 2027</option>
     </select>
     <p class="hint">Choose one provider as the default. You can save credentials for several providers.</p>
   </div>
   <div id="providersSummary" aria-live="polite"></div>
   <div class="note" id="providerHelp"></div>
-  <div id="deprecation" class="warning hidden"><strong>OpenAI shutdown — January 6, 2027.</strong> The legacy <code>tts-1</code>, <code>tts-1-hd</code>, and <code>gpt-4o-mini-tts</code> models will stop working. OpenAI recommends <code>gpt-realtime-2.1-mini</code>, which requires the Realtime API rather than the old Speech endpoint. This temporary integration will not automatically migrate. <a href="https://developers.openai.com/api/docs/deprecations" target="_blank" rel="noopener">Official notice</a>.</div>
+  <p class="hint">OpenAI's older Speech API retires January 6, 2027. It is intentionally not included here; a future OpenAI adapter must use the Realtime API.</p>
 </section>
 <section class="panel" aria-labelledby="connection-heading">
   <div class="panel-head"><span class="step">2</span><h2 id="connection-heading">Connection</h2></div>
@@ -77,7 +76,6 @@ a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}
       <option value="en-US-Chirp3-HD-Kore"><option value="Kore"><option value="Aoede"><option value="Puck">
       <option value="en-US-JennyNeural"><option value="en-US-GuyNeural">
       <option value="tts.piper"><option value="tts.home_assistant_cloud">
-      <option value="alloy"><option value="marin"><option value="cedar">
     </datalist>
     <p class="hint" id="voiceHelp">Voice selection is specific to each provider.</p>
   </div>
@@ -110,8 +108,7 @@ google:{voice:'en-US-Wavenet-F',model:'',help:'Google Cloud project with Text-to
 gemini:{voice:'Kore',model:'gemini-2.5-flash-preview-tts',help:'Use a Google AI Studio Gemini API key. The TTS model is a preview and may have separate quotas.',key:'Gemini API key',voiceHelp:'Gemini prebuilt voices include Kore, Aoede, Puck and Zephyr.',modelHelp:'Default: gemini-2.5-flash-preview-tts.'},
 elevenlabs:{voice:'JBFqnCBsd6RMkjVDRZzb',model:'eleven_flash_v2_5',help:'Use an ElevenLabs API key and a voice ID from your voice library. PCM output may require plan permissions.',key:'ElevenLabs API key',voiceHelp:'Paste your ElevenLabs voice ID (not a display name).',modelHelp:'Default: eleven_flash_v2_5; other text-to-speech-capable model IDs are supported.'},
 azure:{voice:'en-US-JennyNeural',model:'',help:'Use an Azure Speech resource key and its region (for example eastus). Output requests native 8 kHz WAV.',key:'Azure Speech resource key',voiceHelp:'Examples: en-US-JennyNeural, en-US-GuyNeural.'},
-homeassistant:{voice:'tts.piper',model:'',help:'Connect to Home Assistant over your local network with a long-lived access token. The TTS entity must return a WAV through /api/tts_get_url.',key:'Home Assistant long-lived access token',voiceHelp:'Enter the entity ID, e.g. tts.piper or tts.home_assistant_cloud.'},
-openai:{voice:'alloy',model:'gpt-4o-mini-tts',help:'Temporary legacy Speech API only. This model family retires January 6, 2027; do not rely on it for a long-term installation.',key:'OpenAI API key',voiceHelp:'Examples: alloy, ash, coral, marin, cedar.',modelHelp:'Legacy options: gpt-4o-mini-tts, tts-1, tts-1-hd. All are scheduled to retire Jan 6, 2027.'}
+homeassistant:{voice:'tts.piper',model:'',help:'Connect to Home Assistant over your local network with a long-lived access token. The TTS entity must return a WAV through /api/tts_get_url.',key:'Home Assistant long-lived access token',voiceHelp:'Enter the entity ID, e.g. tts.piper or tts.home_assistant_cloud.'}
 };
 function send(msg){return Pebble.sendMessage('plugin',msg);}
 function status(message,kind){var el=$('status');el.textContent=message;el.className=kind||'';}
@@ -127,10 +124,9 @@ function redraw(){
   $('endpoint').value=saved&&saved.endpoint?saved.endpoint:'';
   $('providerHelp').textContent=c.help;
   $('key').value='';
-  setField('modelField',p==='gemini'||p==='elevenlabs'||p==='openai');
+  setField('modelField',p==='gemini'||p==='elevenlabs');
   setField('regionField',p==='azure');
   setField('endpointField',p==='homeassistant');
-  setField('deprecation',p==='openai');
   $('providersSummary').innerHTML='';
   state.providers.forEach(function(x){
     var el=document.createElement('span');el.className='chip'+(x.configured?' ready':'');
@@ -176,7 +172,8 @@ $('forget').addEventListener('click',function(){
     return load(p).then(function(){status(p+' credentials cleared.','ok');});
   }).catch(function(e){status(String(e.message||e),'error');});
 });
-load();
+if(Pebble.addEventListener) Pebble.addEventListener('ready',function(){load();});
+else load();
 })();
 </script>
 </body>
