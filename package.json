@@ -1,9 +1,9 @@
 {
-  "name": "pebble-google-tts-plugin",
-  "version": "0.2.0",
+  "name": "pebble-universal-tts-plugin",
+  "version": "1.0.0",
   "author": "Eric McCormick",
   "pebble": {
-    "displayName": "Google Cloud TTS",
+    "displayName": "Universal TTS",
     "uuid": "2c5edc42-b096-4f76-b284-1f27907e6502",
     "sdkVersion": "3",
     "manifestVersion": 2,
@@ -14,13 +14,18 @@
         "name": "Internet",
         "parameters": {
           "domains": [
-            "texttospeech.googleapis.com"
+            "texttospeech.googleapis.com",
+            "generativelanguage.googleapis.com",
+            "api.elevenlabs.io",
+            "speech.microsoft.com",
+            "api.openai.com"
           ]
         }
-      }
+      },
+      "LocalNetwork"
     ],
     "plugin": {
-      "description": "Google Cloud Text-to-Speech audio bridge. Reusable HA-compatible verified WAV sessions, 8kHz PCM, voice selection.",
+      "description": "Universal text-to-speech engine for Pebble. Google Cloud, Gemini, ElevenLabs, Azure, Home Assistant and temporarily OpenAI Speech. Verified 8kHz WAV sessions. OpenAI Speech models sunset Jan 6, 2027.",
       "script": "src/plugin/index.js",
       "definesPermissions": [
         {
@@ -31,6 +36,16 @@
         {
           "name": "GoogleTtsRead",
           "label": "Read Google TTS configuration status",
+          "kind": "read"
+        },
+        {
+          "name": "UniversalTtsSpeak",
+          "label": "Generate speech using the chosen TTS service",
+          "kind": "exfiltrating"
+        },
+        {
+          "name": "UniversalTtsRead",
+          "label": "Read configured TTS provider status without exposing credentials",
           "kind": "read"
         }
       ],
@@ -111,6 +126,95 @@
           },
           "callerPermissions": [
             "GoogleTtsRead"
+          ]
+        },
+        {
+          "name": "universal_prepare",
+          "description": "Generate canonical 8kHz PCM16 WAV session for text; returns verified first chunk and metadata.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "voice": {
+                "type": "string"
+              },
+              "test_tone": {
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string",
+                "enum": [
+                  "google",
+                  "gemini",
+                  "elevenlabs",
+                  "azure",
+                  "homeassistant",
+                  "openai"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "callerPermissions": [
+            "UniversalTtsSpeak"
+          ]
+        },
+        {
+          "name": "universal_chunk",
+          "description": "Fetch base64 WAV chunk by session_id and aligned offset; includes checksum.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string"
+              },
+              "offset": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "session_id",
+              "offset"
+            ],
+            "additionalProperties": false
+          },
+          "callerPermissions": [
+            "UniversalTtsSpeak"
+          ]
+        },
+        {
+          "name": "universal_release",
+          "description": "Delete temporary audio session and its chunks.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "session_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "session_id"
+            ],
+            "additionalProperties": false
+          },
+          "callerPermissions": [
+            "UniversalTtsSpeak"
+          ]
+        },
+        {
+          "name": "universal_config",
+          "description": "Read configured status and default voice, never the API key.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "callerPermissions": [
+            "UniversalTtsRead"
           ]
         }
       ]
