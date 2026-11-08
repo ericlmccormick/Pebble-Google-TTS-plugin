@@ -1,6 +1,6 @@
 {
   "name": "pebble-universal-tts-plugin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Eric McCormick",
   "pebble": {
     "displayName": "Universal TTS",
@@ -17,51 +17,40 @@
             "texttospeech.googleapis.com",
             "generativelanguage.googleapis.com",
             "api.elevenlabs.io",
-            "speech.microsoft.com",
-            "api.openai.com"
+            "speech.microsoft.com"
           ]
         }
       },
-      "LocalNetwork"
+      {
+        "name": "LocalNetwork"
+      }
     ],
     "plugin": {
-      "description": "Universal text-to-speech engine for Pebble. Google Cloud, Gemini, ElevenLabs, Azure, Home Assistant and temporarily OpenAI Speech. Verified 8kHz WAV sessions. OpenAI Speech models sunset Jan 6, 2027.",
+      "description": "Common TTS engine for Pebble apps and watchfaces. Voice provider chosen by the user, voice streamed to watch with verified PCM WAV chunks.",
       "script": "src/plugin/index.js",
       "definesPermissions": [
         {
-          "name": "GoogleTtsSpeak",
-          "label": "Send text to Google Cloud TTS and fetch generated speech",
-          "kind": "exfiltrating"
-        },
-        {
-          "name": "GoogleTtsRead",
-          "label": "Read Google TTS configuration status",
-          "kind": "read"
-        },
-        {
           "name": "UniversalTtsSpeak",
-          "label": "Generate speech using the chosen TTS service",
+          "label": "Synthesize text with the user's selected speech provider",
           "kind": "exfiltrating"
         },
         {
           "name": "UniversalTtsRead",
-          "label": "Read configured TTS provider status without exposing credentials",
+          "label": "Check Universal TTS availability and provider",
           "kind": "read"
         }
       ],
       "actions": [
         {
           "name": "tts_prepare",
-          "description": "Generate canonical 8kHz PCM16 WAV session for text; returns verified first chunk and metadata.",
+          "description": "Synthesize text with the user's chosen provider; return a verified WAV session, including first chunk.",
           "parameters": {
             "type": "object",
             "properties": {
               "text": {
                 "type": "string",
+                "minLength": 1,
                 "maxLength": 500
-              },
-              "voice": {
-                "type": "string"
               },
               "test_tone": {
                 "type": "boolean"
@@ -70,7 +59,7 @@
             "additionalProperties": false
           },
           "callerPermissions": [
-            "GoogleTtsSpeak"
+            "UniversalTtsSpeak"
           ]
         },
         {
@@ -94,7 +83,7 @@
             "additionalProperties": false
           },
           "callerPermissions": [
-            "GoogleTtsSpeak"
+            "UniversalTtsSpeak"
           ]
         },
         {
@@ -113,101 +102,12 @@
             "additionalProperties": false
           },
           "callerPermissions": [
-            "GoogleTtsSpeak"
-          ]
-        },
-        {
-          "name": "get_config",
-          "description": "Read configured status and default voice, never the API key.",
-          "parameters": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false
-          },
-          "callerPermissions": [
-            "GoogleTtsRead"
-          ]
-        },
-        {
-          "name": "universal_prepare",
-          "description": "Generate canonical 8kHz PCM16 WAV session for text; returns verified first chunk and metadata.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string",
-                "maxLength": 500
-              },
-              "voice": {
-                "type": "string"
-              },
-              "test_tone": {
-                "type": "boolean"
-              },
-              "provider": {
-                "type": "string",
-                "enum": [
-                  "google",
-                  "gemini",
-                  "elevenlabs",
-                  "azure",
-                  "homeassistant",
-                  "openai"
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "callerPermissions": [
             "UniversalTtsSpeak"
           ]
         },
         {
-          "name": "universal_chunk",
-          "description": "Fetch base64 WAV chunk by session_id and aligned offset; includes checksum.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "session_id": {
-                "type": "string"
-              },
-              "offset": {
-                "type": "integer",
-                "minimum": 0
-              }
-            },
-            "required": [
-              "session_id",
-              "offset"
-            ],
-            "additionalProperties": false
-          },
-          "callerPermissions": [
-            "UniversalTtsSpeak"
-          ]
-        },
-        {
-          "name": "universal_release",
-          "description": "Delete temporary audio session and its chunks.",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "session_id": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "session_id"
-            ],
-            "additionalProperties": false
-          },
-          "callerPermissions": [
-            "UniversalTtsSpeak"
-          ]
-        },
-        {
-          "name": "universal_config",
-          "description": "Read configured status and default voice, never the API key.",
+          "name": "tts_status",
+          "description": "Return selected provider status and audio format, never credentials.",
           "parameters": {
             "type": "object",
             "properties": {},
@@ -219,5 +119,6 @@
         }
       ]
     }
-  }
+  },
+  "description": "Provider-independent text to speech for Pebble watch apps and watchfaces"
 }
