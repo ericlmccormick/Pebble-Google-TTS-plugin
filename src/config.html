@@ -1,96 +1,182 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Google Cloud TTS · Pebble Plugin</title>
-<style>:root{color-scheme:light dark;--page:#f3f6fa;--surface:#fff;--ink:#14263a;--muted:#516578;--line:#d8e1eb;--accent:#087eb8;--soft:#eaf5fb;--danger:#a73938}
-@media(prefers-color-scheme:dark){:root{--page:#0c1723;--surface:#192838;--ink:#f3f7fa;--muted:#bdcbd7;--line:#384b5e;--accent:#46abd8;--soft:#193b52;--danger:#ffb3b0}}
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Universal TTS · Pebble Plugin</title>
+<style>
+:root{color-scheme:light dark;--page:#f3f6fa;--surface:#fff;--ink:#14263a;--muted:#52697b;--line:#d8e1eb;--accent:#087eb8;--soft:#eaf5fb;--danger:#a73938;--warn:#9b5d00}
+@media(prefers-color-scheme:dark){:root{--page:#0c1723;--surface:#192838;--ink:#f3f7fa;--muted:#bdcbd7;--line:#384b5e;--accent:#46abd8;--soft:#193b52;--danger:#ffb3b0;--warn:#f3c27c}}
 *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
-.shell{max-width:650px;margin:auto;padding:18px 16px 40px}header{padding:8px 4px 14px}.eyebrow{font-weight:700;text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--accent)}h1{font-size:26px;line-height:1.15;letter-spacing:-.025em;margin:7px 0 9px}h2{font-size:18px;line-height:1.25;margin:0}.intro,.hint,.fine{color:var(--muted)}.intro{margin:0;font-size:14px}.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:19px;margin:13px 0;box-shadow:0 2px 10px rgba(0,0,0,.035)}.panel-head{display:flex;align-items:center;gap:9px;margin-bottom:14px}.step{background:var(--soft);color:var(--accent);border-radius:100px;min-width:29px;height:29px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}.field{margin-top:16px}.field:first-child{margin-top:0}label{display:block;font-weight:650;font-size:14px;margin-bottom:6px}input,select{display:block;width:100%;min-width:0;min-height:47px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--page);color:var(--ink);font:16px/1.35 system-ui,sans-serif}input:focus,select:focus{outline:2px solid var(--accent);outline-offset:2px}.hint{font-size:13px;margin:7px 0 0}.note{background:var(--soft);padding:12px;border-radius:9px;font-size:13px;line-height:1.5;margin-top:13px}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}button{min-height:45px;border-radius:9px;border:1px solid transparent;padding:10px 14px;font:600 14px/1.35 system-ui,sans-serif;background:var(--accent);color:white;cursor:pointer}button.secondary{background:var(--surface);color:var(--ink);border-color:var(--line)}button.danger{background:var(--surface);color:var(--danger);border-color:var(--line)}button:disabled{opacity:.5}#status{white-space:pre-wrap;overflow-wrap:anywhere;padding:13px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-top:16px;font-size:14px}#status.error{border-color:var(--danger)}#status.ok{border-color:var(--accent)}a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}@media(min-width:530px){.shell{padding:24px}.panel{padding:22px}}</style>
+.shell{max-width:660px;margin:auto;padding:18px 16px 44px}header{padding:8px 4px 14px}
+.eyebrow{font-weight:700;text-transform:uppercase;letter-spacing:.12em;font-size:12px;color:var(--accent)}
+h1{font-size:27px;line-height:1.15;letter-spacing:-.025em;margin:7px 0 9px}h2{font-size:18px;line-height:1.25;margin:0}
+.intro,.hint,.fine{color:var(--muted)}.intro{margin:0;font-size:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:19px;margin:13px 0;box-shadow:0 2px 10px rgba(0,0,0,.035)}
+.panel-head{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.step{background:var(--soft);color:var(--accent);border-radius:100px;min-width:29px;height:29px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+.field{margin-top:16px}.field:first-child{margin-top:0}label{display:block;font-weight:650;font-size:14px;margin-bottom:6px}
+input,select{display:block;width:100%;min-width:0;min-height:47px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--page);color:var(--ink);font:16px/1.35 system-ui,sans-serif}
+input:focus,select:focus{outline:2px solid var(--accent);outline-offset:2px}.hint{font-size:13px;margin:7px 0 0}
+.note{background:var(--soft);padding:12px;border-radius:9px;font-size:13px;line-height:1.5;margin-top:13px}
+.warning{border-left:4px solid var(--warn);padding:11px 12px;background:var(--soft);margin-top:12px;font-size:13px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px}
+button{min-height:45px;border-radius:9px;border:1px solid transparent;padding:10px 14px;font:600 14px/1.35 system-ui,sans-serif;background:var(--accent);color:white;cursor:pointer}
+button.secondary{background:var(--surface);color:var(--ink);border-color:var(--line)}
+button.danger{background:var(--surface);color:var(--danger);border-color:var(--line)}button:disabled{opacity:.5}
+#status{white-space:pre-wrap;overflow-wrap:anywhere;padding:13px 15px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-top:16px;font-size:14px}
+#status.error{border-color:var(--danger)}#status.ok{border-color:var(--accent)}
+a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}
+#providersSummary{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.chip{border:1px solid var(--line);border-radius:100px;padding:4px 9px;font-size:12px;color:var(--muted)}
+.chip.ready{border-color:var(--accent);color:var(--ink)}.hidden{display:none!important}
+@media(min-width:530px){.shell{padding:24px}.panel{padding:22px}}
+</style>
 </head>
 <body>
 <main class="shell">
-<header>
-<div class="eyebrow">Pebble plugin · Text to speech</div>
-<h1>Google Cloud TTS</h1>
-<p class="intro">Generate spoken responses for any compatible Pebble app. Only the plugin stores the Google Cloud API key and voice selection.</p>
+<header><div class="eyebrow">Pebble plugin · Speech</div>
+<h1>Universal TTS</h1>
+<p class="intro">One speech interface for any compatible Pebble watch app. Configure and choose your default provider here; apps never receive your provider credentials.</p>
 </header>
-<section class="panel" aria-labelledby="conn-heading">
-<div class="panel-head"><span class="step">1</span><h2 id="conn-heading">Google Cloud connection</h2></div>
-<div class="field"><label for="key">Google Cloud Text-to-Speech API key</label>
-<input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Leave blank to keep saved key">
-<p class="hint">Stored in Pebble secure storage. The key is never returned to calling watch apps.</p></div>
-<div class="note">Google Cloud Text-to-Speech must be enabled on the API key's project. Billing is separate from Gemini or Google AI subscriptions.</div>
+<section class="panel" aria-labelledby="provider-heading">
+  <div class="panel-head"><span class="step">1</span><h2 id="provider-heading">Speech provider</h2></div>
+  <div class="field"><label for="provider">Provider to configure</label>
+    <select id="provider">
+      <option value="google">Google Cloud Text-to-Speech</option>
+      <option value="gemini">Gemini TTS (Google AI Studio)</option>
+      <option value="elevenlabs">ElevenLabs</option>
+      <option value="azure">Microsoft Azure Speech</option>
+      <option value="homeassistant">Home Assistant / Piper (local)</option>
+      <option value="openai">OpenAI Speech — retires Jan 6, 2027</option>
+    </select>
+    <p class="hint">Choose one provider as the default. You can save credentials for several providers.</p>
+  </div>
+  <div id="providersSummary" aria-live="polite"></div>
+  <div class="note" id="providerHelp"></div>
+  <div id="deprecation" class="warning hidden"><strong>OpenAI shutdown — January 6, 2027.</strong> The legacy <code>tts-1</code>, <code>tts-1-hd</code>, and <code>gpt-4o-mini-tts</code> models will stop working. OpenAI recommends <code>gpt-realtime-2.1-mini</code>, which requires the Realtime API rather than the old Speech endpoint. This temporary integration will not automatically migrate. <a href="https://developers.openai.com/api/docs/deprecations" target="_blank" rel="noopener">Official notice</a>.</div>
+</section>
+<section class="panel" aria-labelledby="connection-heading">
+  <div class="panel-head"><span class="step">2</span><h2 id="connection-heading">Connection</h2></div>
+  <div class="field"><label id="keyLabel" for="key">API key</label>
+    <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Leave blank to keep saved key">
+    <p class="hint">Keys and long-lived tokens are stored in Pebble secure storage, and are never shown to calling watch apps.</p>
+  </div>
+  <div id="regionField" class="field hidden"><label for="region">Azure resource region</label>
+    <input id="region" autocomplete="off" spellcheck="false" placeholder="eastus">
+  </div>
+  <div id="endpointField" class="field hidden"><label for="endpoint">Home Assistant base URL</label>
+    <input id="endpoint" inputmode="url" autocomplete="url" spellcheck="false" placeholder="http://192.168.1.2:8123">
+    <p class="hint">Private LAN HTTP or HTTPS. HTTPS is preferable; public custom hosts may require additional Pebble Internet permissions.</p>
+  </div>
 </section>
 <section class="panel" aria-labelledby="voice-heading">
-<div class="panel-head"><span class="step">2</span><h2 id="voice-heading">Voice &amp; pricing</h2></div>
-<div class="field"><label for="voice">Default speaking voice</label>
-<select id="voice" aria-describedby="price"><optgroup label="WaveNet · $4 per million characters"><option value="en-US-Wavenet-F">WaveNet F · Female</option>
-<option value="en-US-Wavenet-C">WaveNet C · Female</option>
-<option value="en-US-Wavenet-D">WaveNet D · Male</option></optgroup>
-<optgroup label="Neural2 · $16 per million characters"><option value="en-US-Neural2-F">Neural2 F · Female</option>
-<option value="en-US-Neural2-C">Neural2 C · Female</option>
-<option value="en-US-Neural2-D">Neural2 D · Male</option></optgroup>
-<optgroup label="Chirp 3 HD · $30 per million characters"><option value="en-US-Chirp3-HD-Kore">Chirp 3 HD Kore · Female</option>
-<option value="en-US-Chirp3-HD-Aoede">Chirp 3 HD Aoede · Female</option>
-<option value="en-US-Chirp3-HD-Leda">Chirp 3 HD Leda · Female</option>
-<option value="en-US-Chirp3-HD-Zephyr">Chirp 3 HD Zephyr · Female</option>
-<option value="en-US-Chirp3-HD-Charon">Chirp 3 HD Charon · Male</option>
-<option value="en-US-Chirp3-HD-Puck">Chirp 3 HD Puck · Male</option></optgroup></select>
-<p class="hint">Any app using this plugin receives the selected default voice, unless it requests a different one.</p></div>
-<div id="price" class="note" aria-live="polite"></div>
-<p class="hint">Prices are Google Cloud paid rates in USD per 1 million synthesized characters, after any applicable monthly free allowance. $ = WaveNet, $$ = Neural2, $$$ = Chirp 3 HD.</p>
-<p class="hint"><a href="https://cloud.google.com/text-to-speech/pricing" target="_blank" rel="noopener">Google Cloud pricing and free-tier limits</a>.</p>
+  <div class="panel-head"><span class="step">3</span><h2 id="voice-heading">Voice &amp; model</h2></div>
+  <div class="field"><label for="voice">Default voice / voice ID / TTS entity</label>
+    <input id="voice" list="voiceHints" autocapitalize="off" spellcheck="false" placeholder="Voice name">
+    <datalist id="voiceHints">
+      <option value="en-US-Wavenet-F"><option value="en-US-Neural2-F">
+      <option value="en-US-Chirp3-HD-Kore"><option value="Kore"><option value="Aoede"><option value="Puck">
+      <option value="en-US-JennyNeural"><option value="en-US-GuyNeural">
+      <option value="tts.piper"><option value="tts.home_assistant_cloud">
+      <option value="alloy"><option value="marin"><option value="cedar">
+    </datalist>
+    <p class="hint" id="voiceHelp">Voice selection is specific to each provider.</p>
+  </div>
+  <div id="modelField" class="field hidden"><label for="model">Speech model</label>
+    <input id="model" autocomplete="off" spellcheck="false">
+    <p class="hint" id="modelHelp"></p>
+  </div>
+  <div class="note">Audio output is normalized to 8 kHz mono PCM16 WAV and transferred using verified chunks. Existing Google TTS apps continue to work without changes.</div>
 </section>
-<section class="panel" aria-labelledby="actions-heading">
-<div class="panel-head"><span class="step">3</span><h2 id="actions-heading">Save &amp; security</h2></div>
-<div class="actions"><button type="button" id="save">Save settings</button><button type="button" id="forget" class="danger">Forget key and speech sessions</button></div>
-<p class="hint">Forgets the saved key and temporary WAV chunks. Your watch apps can be reconnected later.</p>
+<section class="panel" aria-labelledby="save-heading">
+  <div class="panel-head"><span class="step">4</span><h2 id="save-heading">Save &amp; test</h2></div>
+  <div class="actions">
+    <button type="button" id="save">Save &amp; set as default</button>
+    <button type="button" id="saveOnly" class="secondary">Save without switching</button>
+    <button type="button" id="test" class="secondary">Test configured provider</button>
+    <button type="button" id="forget" class="danger">Forget this provider</button>
+  </div>
+  <p class="hint">The test synthesizes a short sample and checks its audio format; it may use paid API credits. Actual watch-speaker playback must be tested in a compatible app.</p>
 </section>
-<div id="status" role="status" aria-live="polite">Loading settings…</div>
-<p class="fine">The audio interface follows the Home Assistant Bridge SDK's verified WAV session format (8 kHz PCM16, checksums, temporary chunks). Apps handle their own watch playback.</p>
+<div id="status" role="status" aria-live="polite">Loading providers…</div>
+<p class="fine">Speech is AI-generated. Tell listeners when required. Provider pricing, quotas and voice availability may change; refer to each provider's documentation.</p>
 </main>
 <script>
 (function(){
 'use strict';
 var $=function(id){return document.getElementById(id);};
-function send(message){return Pebble.sendMessage('plugin',message);}
+var state={provider:'google',providers:[]};
+var info={
+google:{voice:'en-US-Wavenet-F',model:'',help:'Google Cloud project with Text-to-Speech API enabled and billing set up. Existing Google keys and voice choices are preserved.',key:'Google Cloud TTS API key',voiceHelp:'Examples: en-US-Wavenet-F, en-US-Neural2-F, en-US-Chirp3-HD-Kore.'},
+gemini:{voice:'Kore',model:'gemini-2.5-flash-preview-tts',help:'Use a Google AI Studio Gemini API key. The TTS model is a preview and may have separate quotas.',key:'Gemini API key',voiceHelp:'Gemini prebuilt voices include Kore, Aoede, Puck and Zephyr.',modelHelp:'Default: gemini-2.5-flash-preview-tts.'},
+elevenlabs:{voice:'JBFqnCBsd6RMkjVDRZzb',model:'eleven_flash_v2_5',help:'Use an ElevenLabs API key and a voice ID from your voice library. PCM output may require plan permissions.',key:'ElevenLabs API key',voiceHelp:'Paste your ElevenLabs voice ID (not a display name).',modelHelp:'Default: eleven_flash_v2_5; other text-to-speech-capable model IDs are supported.'},
+azure:{voice:'en-US-JennyNeural',model:'',help:'Use an Azure Speech resource key and its region (for example eastus). Output requests native 8 kHz WAV.',key:'Azure Speech resource key',voiceHelp:'Examples: en-US-JennyNeural, en-US-GuyNeural.'},
+homeassistant:{voice:'tts.piper',model:'',help:'Connect to Home Assistant over your local network with a long-lived access token. The TTS entity must return a WAV through /api/tts_get_url.',key:'Home Assistant long-lived access token',voiceHelp:'Enter the entity ID, e.g. tts.piper or tts.home_assistant_cloud.'},
+openai:{voice:'alloy',model:'gpt-4o-mini-tts',help:'Temporary legacy Speech API only. This model family retires January 6, 2027; do not rely on it for a long-term installation.',key:'OpenAI API key',voiceHelp:'Examples: alloy, ash, coral, marin, cedar.',modelHelp:'Legacy options: gpt-4o-mini-tts, tts-1, tts-1-hd. All are scheduled to retire Jan 6, 2027.'}
+};
+function send(msg){return Pebble.sendMessage('plugin',msg);}
 function status(message,kind){var el=$('status');el.textContent=message;el.className=kind||'';}
-function voicePrice(){
-  var v=$('voice').value,details;
-  if(v.indexOf('Chirp3-HD')>=0)details='$$$ · Chirp 3 HD · $30 per 1 million characters · Up to 1 million free characters/month';
-  else if(v.indexOf('Neural2')>=0)details='$$ · Neural2 · $16 per 1 million characters · Up to 1 million free characters/month';
-  else details='$ · WaveNet · $4 per 1 million characters · Up to 4 million free characters/month';
-  $('price').textContent=details;
+function setField(id,shown){$(id).classList.toggle('hidden',!shown);}
+function redraw(){
+  var p=$('provider').value,c=info[p],saved=state.providers.find(function(x){return x.id===p;});
+  $('keyLabel').textContent=c.key;
+  $('voice').value=saved?saved.voice:c.voice;
+  $('voiceHelp').textContent=c.voiceHelp;
+  $('model').value=saved&&saved.model?saved.model:c.model;
+  $('modelHelp').textContent=c.modelHelp||'';
+  $('region').value=saved&&saved.region?saved.region:'';
+  $('endpoint').value=saved&&saved.endpoint?saved.endpoint:'';
+  $('providerHelp').textContent=c.help;
+  $('key').value='';
+  setField('modelField',p==='gemini'||p==='elevenlabs'||p==='openai');
+  setField('regionField',p==='azure');
+  setField('endpointField',p==='homeassistant');
+  setField('deprecation',p==='openai');
+  $('providersSummary').innerHTML='';
+  state.providers.forEach(function(x){
+    var el=document.createElement('span');el.className='chip'+(x.configured?' ready':'');
+    el.textContent=x.name+': '+(x.configured?'Ready':'Not configured')+(state.provider===x.id?' · Default':'');
+    $('providersSummary').appendChild(el);
+  });
+  status((saved&&saved.configured?'Ready: ':'Not configured: ')+p+'. Save credentials or choose another provider.',saved&&saved.configured?'ok':'');
 }
-$('voice').addEventListener('change',voicePrice);
-function load(){
-  send({type:'status'}).then(function(r){
+function load(selected){
+  return send({type:'status'}).then(function(r){
     if(!r.ok)throw Error(r.error||'Settings unavailable');
-    $('voice').value=r.voice||'en-US-Wavenet-F';
-    voicePrice();
-    status(r.configured?'API key saved. Select a voice or save changes.':'Not configured. Enter a Google Cloud Text-to-Speech API key.','ok');
-  }).catch(function(e){status('Settings could not load: '+String(e.message||e),'error');});
+    state.provider=r.provider||'google';state.providers=r.providers||[];
+    $('provider').value=selected||state.provider;redraw();
+  }).catch(function(e){status('Settings unavailable: '+String(e.message||e),'error');});
 }
-$('save').addEventListener('click',function(){
-  $('save').disabled=true;status('Saving TTS settings…');
-  send({type:'save',api_key:$('key').value,voice:$('voice').value}).then(function(r){
-    $('key').value='';
-    if(!r.ok)throw Error(r.error||'Save failed');
-    status('Saved. Default voice: '+r.voice+'.','ok');
+$('provider').addEventListener('change',redraw);
+function save(makeDefault){
+  var p=$('provider').value,m={type:'save',provider:p,api_key:$('key').value,
+    voice:$('voice').value.trim(),model:$('model').value.trim(),region:$('region').value.trim(),
+    endpoint:$('endpoint').value.trim(),make_default:makeDefault};
+  $('save').disabled=true;$('saveOnly').disabled=true;status('Saving '+p+' settings…');
+  return send(m).then(function(r){
+    if(!r.ok)throw Error(r.error||'Could not save');
+    return load(p).then(function(){status('Saved '+p+(makeDefault?' as the default speech provider.':'. Default provider unchanged.'),'ok');});
   }).catch(function(e){status('Save failed: '+String(e.message||e),'error');})
-  .then(function(){$('save').disabled=false;});
+    .then(function(){$('save').disabled=false;$('saveOnly').disabled=false;});
+}
+$('save').addEventListener('click',function(){save(true);});
+$('saveOnly').addEventListener('click',function(){save(false);});
+$('test').addEventListener('click',function(){
+  var p=$('provider').value; $('test').disabled=true;status('Generating a short speech test with '+p+'…');
+  send({type:'test',provider:p}).then(function(r){
+    if(!r.ok)throw Error(r.error||'Speech generation failed');
+    status('Audio generated and decoded successfully by '+p+'. Duration: '+(r.duration_ms/1000).toFixed(1)+' seconds. Verify speaker playback in a watch app.','ok');
+  }).catch(function(e){status('Test failed: '+String(e.message||e),'error');})
+    .then(function(){$('test').disabled=false;});
 });
 $('forget').addEventListener('click',function(){
-  if(!confirm('Forget Google TTS key and temporary speech sessions?'))return;
-  send({type:'forget'}).then(function(r){
-    if(!r.ok)throw Error(r.error||'Could not forget key');
-    $('key').value='';$('voice').value='en-US-Wavenet-F';voicePrice();
-    status('Google TTS credentials and speech sessions cleared.','ok');
+  var p=$('provider').value;
+  if(!confirm('Delete '+p+' credentials and settings? Existing speech sessions will also be deleted.'))return;
+  send({type:'forget',provider:p}).then(function(r){
+    if(!r.ok)throw Error(r.error||'Forget failed');
+    return load(p).then(function(){status(p+' credentials cleared.','ok');});
   }).catch(function(e){status(String(e.message||e),'error');});
 });
-voicePrice();load();
+load();
 })();
 </script>
 </body>

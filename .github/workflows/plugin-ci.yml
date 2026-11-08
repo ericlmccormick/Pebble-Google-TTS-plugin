@@ -22,6 +22,7 @@ jobs:
       - name: Validate plugin syntax and tests
         run: |
           node --check src/plugin/index.js
+          node --check sdk/universal_tts_audio.js
           node tests/plugin.test.cjs
           node tests/settings_ui.test.cjs
       - name: Package directly installable Pebble plugin
@@ -36,12 +37,14 @@ jobs:
           with open('package.json',encoding='utf-8') as f:
               package=json.load(f)
           assert package['pebble']['uuid']=='2c5edc42-b096-4f76-b284-1f27907e6502'
+          assert package['pebble']['displayName']=='Universal TTS'
           packages=glob.glob('build/*.pbw')
           assert len(packages)==1,packages
           with zipfile.ZipFile(packages[0]) as z:
               appinfo=json.loads(z.read('appinfo.json'))
               assert appinfo['uuid']=='2c5edc42-b096-4f76-b284-1f27907e6502'
               assert appinfo['plugin']['script']=='src/plugin/index.js'
+              assert any(a['name']=='universal_prepare' for a in appinfo['plugin']['actions'])
               assert appinfo['configPage']=='src/config.html'
               assert 'src/config.html' in z.namelist()
               assert 'src/plugin/index.js' in z.namelist()
@@ -58,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/pebble-plugin-preview
-          cp build/*.pbw /tmp/pebble-plugin-preview/Google_Cloud_TTS_plugin.pbw
+          cp build/*.pbw /tmp/pebble-plugin-preview/Universal_TTS_plugin.pbw
       - name: Publish direct-download PBW branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
