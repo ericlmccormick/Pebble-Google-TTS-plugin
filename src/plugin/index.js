@@ -463,15 +463,20 @@ async function prepareTts(args){
 Pebble.registerActionHandler(async function(request,respond){
   var args=request.args||{},r;
   switch(request.action){
-    case 'get_config':{
+    case 'universal_config':request.action='get_config';
+    case 'get_config':
+    {
       var p=selectedProvider();
       r={ok:true,data:{configured:await hasProviderCredentials(p),voice:optionFor(p,'voice'),
         provider:p,providers:await providerSummary(),audio_format:'pcm_s16le_wav',sample_rate:8000,
         openai_speech_shutdown:OPENAI_SHUTDOWN,openai_replacement:'gpt-realtime-2.1-mini (Realtime API)'}};
       break;
     }
+    case 'universal_prepare':
     case 'tts_prepare':r=await prepareTts(args);break;
+    case 'universal_chunk':
     case 'tts_chunk':r=ttsChunk(args);break;
+    case 'universal_release':
     case 'tts_release':{
       var id=String(args.session_id||'');
       if(!/^tts[a-z0-9]+$/.test(id)){r=failure('INVALID_ARGS','Invalid session_id');break;}
