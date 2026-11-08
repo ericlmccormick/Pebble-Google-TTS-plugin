@@ -52,7 +52,7 @@ async function verifySession(provider,actionName='universal_prepare'){
   assert.equal(r.ok,true,JSON.stringify(r));
   assert.equal(r.data.sample_rate,8000);assert.equal(r.data.channels,1);
   assert.equal(r.data.chunk_bytes,6000);
-  assert.ok(r.data.first_chunk);assert.equal(r.data.audio_diagnostics.source,undefined);
+  assert.ok(r.data.first_chunk);assert.equal(r.data.audio_diagnostics.source,provider);
   assert.equal(r.data.provider,provider);
   const id=r.data.session_id,total=r.data.length;let bytes=0;
   for(let p=0;p<total;p+=6000){
