@@ -425,11 +425,11 @@ async function synthProvider(p,text,voice,token){
   }
   return session;
 }
-async function prepareTts(args){
+async function prepareTts(args,forcedProvider){
   if(args.test_tone===true)return packageWavSession(testTone(),'universal_tts_test_tone');
   if(typeof args.text!=='string'||!args.text.trim()||args.text.length>500)
     return failure('INVALID_ARGS','Speech text must contain 1–500 characters.');
-  var p=selectedProvider();
+  var p=forcedProvider||selectedProvider();
   var voice=optionFor(p,'voice');
   if(typeof voice!=='string'||voice.length>160||!voice.trim())
     return failure('INVALID_ARGS','Invalid voice.');
@@ -498,11 +498,7 @@ Pebble.registerConfigHandler(async function(message,respond){
     respond({ok:true,provider:p});return;
   }
   if(m.type==='test'){
-    var previousProvider=selectedProvider();
-    localStorage.setItem(DEFAULT_PROVIDER_KEY,p);
-    var r;
-    try{r=await prepareTts({text:'Testing Universal T T S on Pebble.'});}
-    finally{localStorage.setItem(DEFAULT_PROVIDER_KEY,previousProvider);}
+    var r=await prepareTts({text:'Testing Universal T T S on Pebble.'},p);
     if(r.ok){deleteTtsSession(r.data.session_id);localStorage.setItem(TTS_INDEX_KEY,JSON.stringify(sessionList().filter(function(x){return x!==r.data.session_id;})));respond({ok:true,duration_ms:r.data.audio_diagnostics.output.duration_ms,provider:p});}
     else respond({ok:false,error:r.message,code:r.code});
     return;
