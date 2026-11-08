@@ -75,9 +75,10 @@ jobs:
             git switch --orphan builds/previews
             git rm -rf . >/dev/null 2>&1 || true
           fi
-          cp /tmp/pebble-plugin-preview/Google_Cloud_TTS_plugin.pbw ./
+          rm -f ./Google_Cloud_TTS_plugin.pbw
+          cp /tmp/pebble-plugin-preview/Universal_TTS_plugin.pbw ./
           printf 'Development plugin PBW. Source commit: %s\n' "$GITHUB_SHA" > README.txt
-          git add Google_Cloud_TTS_plugin.pbw README.txt
+          git add -A
           if ! git diff --cached --quiet; then
             git commit -m "build: plugin preview from ${GITHUB_SHA}"
             git push origin HEAD:builds/previews
