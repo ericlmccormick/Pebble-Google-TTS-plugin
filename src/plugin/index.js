@@ -662,7 +662,7 @@ async function prepareTts(args,forcedProvider){
 // Expose the configured TTS engine as a read-only source. Pebble uses source
 // categories in plugin metadata; apps still invoke the existing speech actions.
 Pebble.registerSourceHandler(async function(request,respond){
-  if(request.category!=='tts'||request.item!=='configured'){
+  if(request.category!=='agent'||request.item!=='configured'){
     respond.error('INVALID_REQUEST','Unsupported TTS source.');return;
   }
   try{
