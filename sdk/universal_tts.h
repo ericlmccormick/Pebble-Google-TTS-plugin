@@ -3,7 +3,7 @@
  * App owns AppMessage registration and must declare COMMAND, TEXT and CHUNK keys.
  * Handles native playback on watches with a speaker.
  * The app owns AppMessage registration; pass received dictionaries to
- * universal_tts_handle_message(). No Home Assistant credentials on the watch.
+ * universal_tts_handle_message(). Provider credentials remain in the phone plugin.
  */
 #ifndef UNIVERSAL_TTS_H
 #define UNIVERSAL_TTS_H
