@@ -119,6 +119,6 @@ Audio uses a verified canonical WAV format followed by phone-side IMA-ADPCM enco
 
 ## Builds and tests
 
-GitHub Actions tests the five provider adapters using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Google-TTS-plugin/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
+GitHub Actions tests the five provider adapters using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Universal-TTS/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
 
 Automated tests do not guarantee live provider authorization, sound quality, or playback on each Pebble model. SDK files are MIT licensed (sdk/LICENSE).
