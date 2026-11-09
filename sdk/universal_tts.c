@@ -1,10 +1,10 @@
-/* Pebble Google Cloud TTS Bridge watch audio transport SDK v1.
+/* Pebble Universal TTS watch audio transport SDK v1.
  * MIT licensed. Audio codec/PCM scheduler extracted from the validated
- * Gemini/Google TTS transport, not its UI, microphone, or conversation logic.
+ * Universal TTS transport, not any application's UI or conversation logic.
  * Message keys: COMMAND, TEXT, CHUNK. App registers one inbox handler and
  * delegates AUDIO_* commands here.
  */
-#include "google_tts_audio.h"
+#include "universal_tts.h"
 #include <string.h>
 #include <stdio.h>
 #ifdef PBL_SPEAKER
@@ -277,16 +277,17 @@ static void clear_stats(void){
   s_audio_partial_writes=0;s_audio_zero_writes=0;
   s_audio_frames_written=0;s_audio_max_queued=0;
 }
-void google_tts_audio_init(void){clear_stats();s_ignore_audio=false;reset_adpcm_state();}
-void google_tts_audio_stop(void){stop_audio();s_ignore_audio=true;}
-void google_tts_audio_deinit(void){google_tts_audio_stop();}
-void google_tts_audio_set_volume(float v){
+void universal_tts_init(void){clear_stats();s_ignore_audio=false;reset_adpcm_state();}
+bool universal_tts_supported(void){return true;}
+void universal_tts_stop(void){stop_audio();s_ignore_audio=true;}
+void universal_tts_deinit(void){universal_tts_stop();}
+void universal_tts_set_volume(float v){
   if(v<0) v=0;
   if(v>1) v=1;
   s_volume=v;
 }
-bool google_tts_audio_is_playing(void){return s_speaker_open||s_buffer_count||s_pcm_queued;}
-bool google_tts_audio_handle_message(DictionaryIterator *iter){
+bool universal_tts_is_playing(void){return s_speaker_open||s_buffer_count||s_pcm_queued;}
+bool universal_tts_handle_message(DictionaryIterator *iter){
   if(!iter)return false;
   Tuple *cmd=dict_find(iter,MESSAGE_KEY_COMMAND);
   if(!cmd||cmd->type!=TUPLE_CSTRING)return false;
@@ -294,7 +295,7 @@ bool google_tts_audio_handle_message(DictionaryIterator *iter){
   if(!strcmp(c,"AUDIO_RESET")){
     stop_audio();clear_stats();s_ignore_audio=false;return true;
   }
-  if(!strcmp(c,"AUDIO_STOP")){google_tts_audio_stop();return true;}
+  if(!strcmp(c,"AUDIO_STOP")){universal_tts_stop();return true;}
   if(!strcmp(c,"AUDIO_CHUNK")){
     if(s_ignore_audio)return true;
     Tuple *payload=dict_find(iter,MESSAGE_KEY_CHUNK);
@@ -314,10 +315,11 @@ bool google_tts_audio_handle_message(DictionaryIterator *iter){
   return false;
 }
 #else
-void google_tts_audio_init(void){}
-void google_tts_audio_deinit(void){}
-void google_tts_audio_stop(void){}
-void google_tts_audio_set_volume(float v){(void)v;}
-bool google_tts_audio_is_playing(void){return false;}
-bool google_tts_audio_handle_message(DictionaryIterator *iter){(void)iter;return false;}
+void universal_tts_init(void){}
+bool universal_tts_supported(void){return false;}
+void universal_tts_deinit(void){}
+void universal_tts_stop(void){}
+void universal_tts_set_volume(float v){(void)v;}
+bool universal_tts_is_playing(void){return false;}
+bool universal_tts_handle_message(DictionaryIterator *iter){(void)iter;return false;}
 #endif

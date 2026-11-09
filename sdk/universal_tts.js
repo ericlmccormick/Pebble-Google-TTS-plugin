@@ -1,20 +1,26 @@
-/* Pebble Google Cloud TTS audio transport SDK, v1.
- * Copy to src/pkjs/google_tts_audio.js and require('./google_tts_audio').
- * Requires the Google TTS plugin, PBL_SPEAKER, and message keys COMMAND/TEXT/CHUNK.
- * No Google Cloud credentials or direct API requests in this module.
+/* Pebble Universal TTS reusable phone-side playback SDK.
+ * Copy to src/pkjs/universal_tts.js and require('./universal_tts').
+ * Requires the Universal TTS plugin plus COMMAND/TEXT/CHUNK AppMessage keys.
+ * JavaScript: create({Pebble}).speak(text); native C: universal_tts_handle_message(iter).
+ * The watch must have a speaker (PBL_SPEAKER) to produce audible output.
+ * Credentials and provider selection stay in the Universal TTS plugin.
  * Copyright (c) 2026 contributors. MIT licensed.
  */
 'use strict';
 var DEFAULT_PLUGIN_ID='2c5edc42-b096-4f76-b284-1f27907e6502';
 module.exports={
+  PLUGIN_UUID:DEFAULT_PLUGIN_ID,
+  PERMISSION:'UniversalTtsSpeak',
   create:function(options){
     options=options||{};
     var Pebble=options.Pebble;
-    var localStorage=options.storage;
-    if(!Pebble||!localStorage||typeof Pebble.invokeAction!=='function')
+    var storage=options.storage || (typeof globalThis==='object'&&globalThis.localStorage) || {
+      getItem:function(){return null;},setItem:function(){}
+    };
+    if(!Pebble||typeof Pebble.invokeAction!=='function')
       throw Error('Pebble plugin invokeAction is required');
-    var GOOGLE_TTS_PLUGIN_UUID=options.pluginId||DEFAULT_PLUGIN_ID;
-    var PCM_DEBUG_STORAGE_KEY=options.diagnosticsKey||'GOOGLE_TTS_AUDIO_LIBRARY_DIAG_V1';
+    var pluginUuid=options.pluginId||DEFAULT_PLUGIN_ID;
+    var PCM_DEBUG_STORAGE_KEY=options.diagnosticsKey||'UNIVERSAL_TTS_DIAG_V1';
     var onError=options.onError||null,onComplete=options.onComplete||null;
     var onStats=options.onStats||null;
     var lastAnswer='';
@@ -44,7 +50,7 @@ var stepTable = [
 var indexTable = [-1,-1,-1,-1,2,4,6,8,-1,-1,-1,-1,2,4,6,8];
 
 var pluginPreparedSentence=null;
-function prefetchNextBridgeSentence(gen){
+function prefetchNextTTSSentence(gen){
   if(gen!==requestGeneration||pluginPreparedSentence||
      !sentenceQueue.length)return;
   var sentence=sentenceQueue.shift();
@@ -57,7 +63,7 @@ function prefetchNextBridgeSentence(gen){
   );
   pluginPreparedSentence=entry;
 }
-function consumePreparedBridgeSentence(gen){
+function consumePreparedTTSSentence(gen){
   if(pluginPreparedSentence&&pluginPreparedSentence.gen!==gen)
     pluginPreparedSentence=null;
   if(pluginPreparedSentence){
@@ -140,11 +146,11 @@ function pluginWavChecksum(bytes){
   return hash>>>0;
 }
 function pluginAction(name,args){
-  return Pebble.invokeAction({plugin:GOOGLE_TTS_PLUGIN_UUID,action:name,args:args});
+  return Pebble.invokeAction({plugin:pluginUuid,action:name,args:args});
 }
 // A transient HTTP 5xx while preparing a later sentence must not discard
-// a long answer immediately. Bridge itself retries/re-generates TTS proxy
-// URLs; this single SDK retry also tolerates an older Bridge build.
+// a long answer immediately. TTS itself retries/re-generates TTS proxy
+// URLs; this single SDK retry also tolerates an older TTS build.
 function pluginPrepareWithRetry(sentence,attempt){
   attempt=attempt||0;
   return pluginAction('tts_prepare',{text:sentence}).then(function(reply){
@@ -187,15 +193,15 @@ function pluginStreamWav(sentence,gen,onPcm,prepared){
   var firstPlaybackAt=0;
   function updateDebug(fields){
     var d={};
-    try{d=JSON.parse(localStorage.getItem(PCM_DEBUG_STORAGE_KEY)||'{}');}catch(e){}
+    try{d=JSON.parse(storage.getItem(PCM_DEBUG_STORAGE_KEY)||'{}');}catch(e){}
     for(var k in fields)if(Object.prototype.hasOwnProperty.call(fields,k))d[k]=fields[k];
-    localStorage.setItem(PCM_DEBUG_STORAGE_KEY,JSON.stringify(d));
+    storage.setItem(PCM_DEBUG_STORAGE_KEY,JSON.stringify(d));
   }
   function useChunk(offset,bytes,expected,length){
     if(gen!==requestGeneration)throw Error('TTS cancelled');
     if(!Number.isInteger(expected) ||
        pluginWavChecksum(new Uint8Array(bytes))!==(expected>>>0))
-      throw Error('Bridge WAV chunk checksum mismatch at '+offset);
+      throw Error('TTS WAV chunk checksum mismatch at '+offset);
     if((offset===0 && bytes.length<44) || (offset!==0 && offset%6000!==0))
       throw Error('Invalid streamed WAV chunk alignment');
     if(offset===0){
@@ -205,7 +211,7 @@ function pluginStreamWav(sentence,gen,onPcm,prepared){
          (bytes[22]|bytes[23]<<8)!==1 ||
          (bytes[24]|bytes[25]<<8|bytes[26]<<16|bytes[27]<<24)!==8000 ||
          (bytes[34]|bytes[35]<<8)!==16)
-        throw Error('Invalid canonical Bridge PCM WAV header');
+        throw Error('Invalid canonical TTS PCM WAV header');
     }
     for(var h=0;h<bytes.length;h++)rolling=Math.imul((rolling^bytes[h])>>>0,16777619)>>>0;
     var from=offset===0?44:0;
@@ -218,10 +224,10 @@ function pluginStreamWav(sentence,gen,onPcm,prepared){
       pcm.push(filtered);
       prev2=prev1;prev1=sample;countSamples++;
     }
-    if(pcm.length%2)throw Error('Odd PCM sample boundary in Bridge chunk');
+    if(pcm.length%2)throw Error('Odd PCM sample boundary in TTS chunk');
     var last=offset+bytes.length===length;
     if(last && (rolling>>>0)!==expectedChecksum)
-      throw Error('Bridge WAV final checksum mismatch');
+      throw Error('TTS WAV final checksum mismatch');
     var audio=encodeADPCM(pcm);
     return waitForStreamRoom(gen).then(function(){
       if(!firstPlaybackAt){
@@ -301,9 +307,9 @@ function pluginStreamWav(sentence,gen,onPcm,prepared){
        !Number.isInteger(meta.length)||meta.length<44||
        meta.length>1500000||meta.length%2!==0||
        !meta.session_id||!Number.isInteger(meta.wav_checksum))
-      throw Error('Bridge streaming format mismatch');
+      throw Error('TTS streaming format mismatch');
     if(meta.length!==44+meta.sample_count*2)
-      throw Error('Bridge streaming WAV length mismatch');
+      throw Error('TTS streaming WAV length mismatch');
     expectedChecksum=meta.wav_checksum>>>0;
     session=String(meta.session_id);
     var step=meta.chunk_bytes||6000;
@@ -315,10 +321,10 @@ function pluginStreamWav(sentence,gen,onPcm,prepared){
     d.prepare_ms=preparedAt-startedAt;
     d.inlined_first_chunk=!!meta.first_chunk;
     d.progressive_playback=true;
-    localStorage.setItem(PCM_DEBUG_STORAGE_KEY,JSON.stringify(d));
+    storage.setItem(PCM_DEBUG_STORAGE_KEY,JSON.stringify(d));
     if(typeof meta.first_chunk!=='string' ||
        !Number.isInteger(meta.first_chunk_checksum))
-      throw Error('Bridge does not support verified streaming chunks; update Bridge');
+      throw Error('TTS does not support verified streaming chunks; update TTS');
     var first=pluginDecodeBase64(meta.first_chunk);
     if(first.length!==Math.min(step,meta.length))
       throw Error('Invalid first streamed WAV chunk');
@@ -344,7 +350,7 @@ function startPluginTTSFetchLoop(gen){
      readyAudioQueue.length>=MAX_READY_AUDIO_SENTENCES){
     conversationMaybeCompleteAudio();return;
   }
-  var selected=consumePreparedBridgeSentence(gen);
+  var selected=consumePreparedTTSSentence(gen);
   if(!selected)return;
   isFetchingTTS=true;
   var sentence=selected.sentence,streamedAdpcm=0,startedNextPrep=false;
@@ -352,13 +358,13 @@ function startPluginTTSFetchLoop(gen){
     if(gen!==requestGeneration)throw Error('TTS cancelled');
     streamedAdpcm+=audio.length;
     // Prioritize the active sentence's first ~0.75 seconds (three 6KB
-    // WAV chunks) before running another Google TTS request. Prefetch
+    // WAV chunks) before running another Universal TTS request. Prefetch
     // immediately for short sentences that end sooner than this threshold.
     // This keeps sentence overlap without competing with critical startup
     // chunk traffic.
     if(!startedNextPrep && (streamedAdpcm>=3000 || last)){
       startedNextPrep=true;
-      prefetchNextBridgeSentence(gen);
+      prefetchNextTTSSentence(gen);
     }
     // Segment boundaries are NOT sentence boundaries. The Bluetooth sender
     // must carry IMA predictor state continuously and emit sentence-end only
@@ -377,7 +383,7 @@ function startPluginTTSFetchLoop(gen){
     isFetchingTTS=false;isSendingBLE=false;
     readyAudioQueue=[];conversationAudioFinalPending=false;sentenceQueue=[];
     pluginPreparedSentence=null;
-    console.log('Google TTS plugin TTS: '+String(error.message||error));
+    console.log('Universal TTS plugin TTS: '+String(error.message||error));
     if(onError)onError(error);
     Pebble.sendAppMessage({COMMAND:'AUDIO_STOP'},function(){},function(){});
   });
@@ -511,7 +517,7 @@ function startBLESendLoop() {
       bleFlowGeneration=-1;bleFlowSent=0;bleFlowStartedAt=0;
       lastAnswer=text;
       sentenceQueue=[];
-      // Bridge tts_prepare accepts up to 500 characters. Break up even long
+      // TTS tts_prepare accepts up to 500 characters. Break up even long
       // unpunctuated responses without losing words or audio continuity.
       (text.match(/[^.!?]+[.!?]*/g)||[text]).forEach(function(piece){
         piece=piece.trim();
@@ -541,12 +547,12 @@ function startBLESendLoop() {
         var n=Number(kv[1]);
         if(Number.isInteger(n)&&n>=0)stats[kv[0]]=n;
       });
-      localStorage.setItem(PCM_DEBUG_STORAGE_KEY+'_WATCH',JSON.stringify(stats));
+      storage.setItem(PCM_DEBUG_STORAGE_KEY+'_WATCH',JSON.stringify(stats));
       if(onStats)onStats(stats);
       return true;
     }
     function diagnostics(){
-      try{return JSON.parse(localStorage.getItem(PCM_DEBUG_STORAGE_KEY)||'null');}
+      try{return JSON.parse(storage.getItem(PCM_DEBUG_STORAGE_KEY)||'null');}
       catch(e){return null;}
     }
     return {speak:speak,stop:stop,diagnostics:diagnostics,
