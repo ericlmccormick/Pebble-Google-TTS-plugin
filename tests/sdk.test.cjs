@@ -2,6 +2,12 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const lib=require('../sdk/universal_tts.js');
+const example=JSON.parse(fs.readFileSync(path.join(__dirname,'../examples/hello-speech/package.json'),'utf8'));
+assert.deepEqual(example.pebble.messageKeys,['COMMAND','TEXT','CHUNK']);
+assert.ok(example.pebble.usesPermissions.some(x=>x.name==='UniversalTtsSpeak'));
+for(const name of ['universal_tts.js','universal_tts.c','universal_tts.h'])assert.ok(fs.existsSync(path.join(__dirname,'../sdk',name)));
+for(const old of ['google_tts_audio.js','google_tts_audio.c','google_tts_audio.h','universal_tts_audio.js','universal_tts_audio.c','universal_tts_audio.h'])assert.ok(!fs.existsSync(path.join(__dirname,'../sdk',old)),old);
+
 const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../package.json'),'utf8'));
 assert.equal(lib.PLUGIN_UUID,manifest.pebble.uuid);
 assert.equal(lib.PERMISSION,'UniversalTtsSpeak');
