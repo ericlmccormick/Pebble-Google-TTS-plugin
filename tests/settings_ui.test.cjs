@@ -23,4 +23,7 @@ assert.ok(html.includes('id="voiceCatalog"'));
 assert.ok(!html.includes('id="voiceHints"'));
 
 assert.ok(html.includes("Pebble.addEventListener('ready'"));
-console.log('PASS: twelve-provider live catalog settings and retirement notes');
+const match=html.match(/<script>([\s\S]*?)<\/script>/);
+assert.ok(match,'Configuration page must include JavaScript');
+assert.doesNotThrow(()=>new vm.Script(match[1],{filename:'config.inline.js'}));
+console.log('PASS: twelve-provider live catalog settings, syntax and retirement notes');
