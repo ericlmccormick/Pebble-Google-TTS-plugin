@@ -580,7 +580,7 @@ async function synthProvider(p,text,voice,token){
     model=optionFor(p,'model');
     if(!validSetting(voice)||!validSetting(model))return failure('INVALID_ARGS','Select a Cartesia voice and model.');
     response=await fetch('https://api.cartesia.ai/tts/bytes',{
-      method:'POST',headers:{Authorization:'Bearer '+token,'Cartesia-Version':'2026-08-14','Content-Type':'application/json'},
+      method:'POST',headers:{'X-API-Key':token,'Cartesia-Version':'2026-08-14','Content-Type':'application/json'},
       body:JSON.stringify({model_id:model,transcript:text,voice:voice,
         output_format:{container:'wav',encoding:'pcm_s16le',sample_rate:16000}})});
     result=await binaryResponse(response,p);if(!result.ok)return result;
