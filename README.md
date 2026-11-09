@@ -2,7 +2,7 @@
 
 **One speech API for Pebble watch apps and watchfaces.** Apps send text, and Universal TTS chooses the user's configured provider. Watch apps never store provider keys, talk directly to vendor APIs, or implement resampling/audio transfer.
 
-Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **0.1.0** (initial release candidate).
+Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **0.1.0** (published version per the current source manifest).
 
 ## Quick start — 3 reusable SDK files
 
