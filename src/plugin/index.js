@@ -659,6 +659,30 @@ async function prepareTts(args,forcedProvider){
   try{return await synthProvider(p,args.text,voice,token);}
   catch(e){return failure('PLUGIN_UNAVAILABLE',providerName(p)+' synthesis/decoding failed.');}
 }
+// Expose the configured TTS engine as a read-only source. Pebble uses source
+// categories in plugin metadata; apps still invoke the existing speech actions.
+Pebble.registerSourceHandler(async function(request,respond){
+  if(request.category!=='tts'||request.item!=='configured'){
+    respond.error('INVALID_REQUEST','Unsupported TTS source.');return;
+  }
+  try{
+    var p=selectedProvider();
+    var ready=await hasProviderCredentials(p);
+    respond.data({
+      validUntilMs:Date.now()+120000,
+      instances:[{
+        instanceId:'default',
+        properties:{
+          name:{shortText:{text:'Universal TTS'}},
+          configured:{boolean:{value:ready}},
+          provider:{shortText:{text:p}},
+          voice:{shortText:{text:optionFor(p,'voice')}}
+        }
+      }]
+    });
+  }catch(e){respond.error('PLUGIN_UNAVAILABLE','TTS status unavailable.');}
+});
+
 Pebble.registerActionHandler(async function(request,respond){
   var args=request.args||{},r;
   switch(request.action){
