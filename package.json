@@ -1,6 +1,6 @@
 {
   "name": "pebble-universal-tts-plugin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Eric McCormick",
   "pebble": {
     "displayName": "Universal TTS",
@@ -17,7 +17,15 @@
             "texttospeech.googleapis.com",
             "generativelanguage.googleapis.com",
             "api.elevenlabs.io",
-            "speech.microsoft.com"
+            "speech.microsoft.com",
+            "api.deepgram.com",
+            "api.cartesia.ai",
+            "api.speechify.ai",
+            "api.smallest.ai",
+            "api.inworld.ai",
+            "api.fish.audio",
+            "coda.api.rime.ai",
+            "docs.rime.ai"
           ]
         }
       },
@@ -26,7 +34,7 @@
       }
     ],
     "plugin": {
-      "description": "Common TTS engine for Pebble apps and watchfaces. Voice provider chosen by the user, voice streamed to watch with verified PCM WAV chunks.",
+      "description": "Provider-independent Pebble TTS with live voice and model discovery, 12 speech services, and verified 8 kHz audio. Apps call one speak() method.",
       "script": "src/plugin/index.js",
       "definesPermissions": [
         {
