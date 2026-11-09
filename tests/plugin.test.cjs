@@ -7,8 +7,13 @@ assert.deepEqual(manifest.pebble.plugin.actions.map(a=>a.name),
 assert.deepEqual(manifest.pebble.plugin.definesPermissions.map(a=>a.name),
  ['UniversalTtsSpeak','UniversalTtsRead']);
 for(const a of manifest.pebble.plugin.actions) assert.ok(a.callerPermissions.every(p=>p.startsWith('UniversalTts')));
+assert.equal(manifest.pebble.plugin.sources.length,1);
+assert.equal(manifest.pebble.plugin.sources[0].category,'tts');
+assert.deepEqual(manifest.pebble.plugin.sources[0].items,['configured']);
+assert.deepEqual(manifest.pebble.plugin.sources[0].callerPermissions,['UniversalTtsRead']);
+assert.deepEqual(manifest.pebble.plugin.sources[0].properties.configured,['boolean']);
 const store=new Map(),secure=new Map(),requests=[];
-let action,config;
+let action,config,source;
 const localStorage={
  getItem:k=>store.get(k)||null,
  setItem:(k,v)=>store.set(k,String(v)),
@@ -16,7 +21,8 @@ const localStorage={
 };
 const Pebble={
  secureStorage:{getItem:async k=>secure.get(k)||null,setItem:async(k,v)=>secure.set(k,v),removeItem:async k=>secure.delete(k)},
- registerActionHandler:fn=>action=fn,registerConfigHandler:fn=>config=fn
+ registerActionHandler:fn=>action=fn,registerConfigHandler:fn=>config=fn,
+ registerSourceHandler:fn=>source=fn
 };
 const wav=Buffer.alloc(44+16000);
 wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVE',8);
@@ -77,6 +83,12 @@ function req(name,args){return new Promise(resolve=>action({action:name,args:arg
  error:(code,message)=>resolve({ok:false,code,message})
 }));}
 function cfg(args){return new Promise(resolve=>config(args,resolve));}
+function readConfigured(category='tts',item='configured'){
+ return new Promise(resolve=>source({category,item},{
+  data:payload=>resolve({ok:true,...payload}),
+  error:(code,message)=>resolve({ok:false,code,message})
+ }));
+}
 async function verifySession(provider){
  const r=await req('tts_prepare',{text:'Hello from '+provider});
  assert.equal(r.ok,true,JSON.stringify(r));
@@ -96,6 +108,12 @@ async function verifySession(provider){
  assert.equal((await req('tts_chunk',{session_id:id,offset:0})).ok,false);
 }
 (async()=>{
+ let beforeSource=await readConfigured();
+ assert.equal(beforeSource.ok,true);
+ assert.equal(beforeSource.instances[0].instanceId,'default');
+ assert.equal(beforeSource.instances[0].properties.name.shortText.text,'Universal TTS');
+ assert.equal(beforeSource.instances[0].properties.configured.boolean.value,false);
+ assert.equal((await readConfigured('agent')).code,'INVALID_REQUEST');
  let r=await req('tts_prepare',{text:'Hello'});
  assert.equal(r.code,'AUTH_REQUIRED');
  r=await req('tts_prepare',{test_tone:true});
@@ -103,6 +121,11 @@ async function verifySession(provider){
  assert.equal(r.data.sample_rate,8000);
  r=await cfg({type:'save',api_key:'google_secret',voice:'en-US-Wavenet-F'});
  assert.equal(r.ok,true);assert.equal(r.default_provider,'google');
+ let activeSource=await readConfigured();
+ assert.equal(activeSource.instances[0].properties.configured.boolean.value,true);
+ assert.equal(activeSource.instances[0].properties.provider.shortText.text,'google');
+ assert.equal(activeSource.instances[0].properties.voice.shortText.text,'en-US-Wavenet-F');
+ assert.ok(activeSource.validUntilMs>Date.now());
  await verifySession('google');
 
  r=await cfg({type:'save',provider:'gemini',api_key:'gemini_secret',voice:'Kore',
@@ -185,6 +208,7 @@ async function verifySession(provider){
  // UI test must not silently switch the chosen provider.
  assert.equal((await req('tts_status')).data.provider,'homeassistant');
  r=await cfg({type:'forget',provider:'homeassistant'});assert.equal(r.ok,true);
+ assert.equal((await readConfigured()).instances[0].properties.configured.boolean.value,false);
  assert.equal((await req('tts_prepare',{text:'hi'})).code,'AUTH_REQUIRED');
  assert.ok(!requests.some(x=>x.url.includes('api.openai.com')));
  assert.ok(requests.length>=6);
