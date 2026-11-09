@@ -128,7 +128,7 @@
       ],
       "sources": [
         {
-          "category": "tts",
+          "category": "agent",
           "items": [
             "configured"
           ],
