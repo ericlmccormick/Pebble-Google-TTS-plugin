@@ -28,16 +28,44 @@ const raw16=wav.subarray(44);
 function binary(data){return data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength);}
 const fetch=async(url,options={})=>{
  const u=String(url);requests.push({url:u,headers:options.headers||{},body:options.body});
- if(u.includes('texttospeech.googleapis.com'))return {ok:true,json:async()=>({audioContent:wav.toString('base64')})};
- if(u.includes('generativelanguage.googleapis.com'))return {ok:true,json:async()=>({
+ const json=data=>({ok:true,json:async()=>data});
+ const audio=data=>({ok:true,arrayBuffer:async()=>binary(data)});
+ if(u.includes('texttospeech.googleapis.com/v1/voices'))return json({voices:[{name:'en-US-Wavenet-F',languageCodes:['en-US']} ]});
+ if(u.includes('texttospeech.googleapis.com'))return json({audioContent:wav.toString('base64')});
+ if(u.includes('generativelanguage.googleapis.com/v1beta/models?'))return json({models:[
+  {name:'models/gemini-2.5-flash-preview-tts'},{name:'models/gemini-2.5-flash'}]});
+ if(u.includes('generativelanguage.googleapis.com'))return json({
    candidates:[{content:{parts:[{inlineData:{mimeType:'audio/L16;rate=8000',data:raw16.toString('base64')}}]}}]
- })};
- if(u.includes('elevenlabs.io'))return {ok:true,arrayBuffer:async()=>binary(raw16)};
- if(u.includes('speech.microsoft.com'))return {ok:true,arrayBuffer:async()=>binary(wav)};
- if(u.endsWith('/api/tts_get_url'))return {ok:true,json:async()=>({
-   path:'/api/tts_proxy/test.wav',url:'https://malicious.example/steal'
- })};
- if(u.includes('/api/tts_proxy/'))return {ok:true,arrayBuffer:async()=>binary(wav)};
+ });
+ if(u.endsWith('api.elevenlabs.io/v1/voices'))return json({voices:[{voice_id:'JBFqnCBsd6RMkjVDRZzb',name:'George'}]});
+ if(u.endsWith('api.elevenlabs.io/v1/models'))return json([{model_id:'eleven_flash_v2_5',name:'Flash v2.5',can_do_text_to_speech:true}]);
+ if(u.includes('elevenlabs.io'))return audio(raw16);
+ if(u.includes('speech.microsoft.com/cognitiveservices/voices/list'))return json([{ShortName:'en-US-JennyNeural',DisplayName:'Jenny',Locale:'en-US'}]);
+ if(u.includes('speech.microsoft.com'))return audio(wav);
+ if(u.endsWith('/api/states'))return json([{entity_id:'tts.piper',attributes:{friendly_name:'Piper'}},{entity_id:'light.kitchen'}]);
+ if(u.endsWith('/api/tts_get_url'))return json({path:'/api/tts_proxy/test.wav',url:'https://malicious.example/steal'});
+ if(u.includes('/api/tts_proxy/'))return audio(wav);
+ if(u.endsWith('api.deepgram.com/v1/models'))return json({tts:[
+  {canonical_name:'aura-2-thalia-en',name:'thalia'},
+  {canonical_name:'flux-alexis-en',name:'alexis'}]});
+ if(u.includes('api.deepgram.com/v1/speak'))return audio(wav);
+ if(u.endsWith('api.cartesia.ai/models'))return json({data:[
+  {id:'sonic-3.6',name:'Sonic 3.6',capability:'tts'},
+  {id:'ink-2',name:'Ink STT',capability:'stt'}]});
+ if(u.includes('api.cartesia.ai/voices'))return json({data:[{id:'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',name:'Skylar'}],
+  has_more:u.includes('starting_after')?false:true,next_page:u.includes('starting_after')?'':'page+=/'});
+ if(u.includes('api.cartesia.ai/tts/bytes'))return audio(wav);
+ if(u.includes('api.speechify.ai/v1/audio/models'))return json({models:[{id:'simba-3.5',name:'Simba 3.5',recommended:true}]});
+ if(u.includes('api.speechify.ai/v1/voices'))return json({voices:[{id:'geffen_32',display_name:'Geffen'}],has_more:false});
+ if(u.includes('api.speechify.ai/v1/audio/speech'))return json({audio_data:raw16.toString('base64'),audio_format:'pcm',output_format:'pcm_16000'});
+ if(u.includes('api.smallest.ai/waves/v1/')&&u.includes('/get_voices'))return json({voices:[{voiceId:'kaitlyn',displayName:'Kaitlyn'}]});
+ if(u.includes('api.smallest.ai/waves/v1/tts'))return audio(wav);
+ if(u.includes('api.inworld.ai/voices/v1/voices'))return json({voices:[{voiceId:'Dennis',displayName:'Dennis'}],nextPageToken:''});
+ if(u.includes('api.inworld.ai/tts/v1/voice'))return json({audioContent:wav.toString('base64')});
+ if(u.includes('docs.rime.ai/data/voices'))return json({coda:{en:['astra','luna'],es:['selena']}});
+ if(u.includes('coda.api.rime.ai'))return audio(wav);
+ if(u.includes('api.fish.audio/model'))return json({items:[{_id:'fishvoice123',title:'Fish Voice'}]});
+ if(u.includes('api.fish.audio/v1/tts'))return audio(wav);
  throw Error('Unexpected endpoint '+u);
 };
 vm.runInNewContext(fs.readFileSync(__dirname+'/../src/plugin/index.js','utf8'),{
@@ -96,6 +124,52 @@ async function verifySession(provider){
  assert.ok(requests.some(x=>x.url==='http://192.168.1.2:8123/api/tts_proxy/test.wav'));
  assert.ok(!requests.some(x=>x.url.includes('malicious.example')));
 
+
+ const newProviders=[
+  ['deepgram','deepgram_secret','aura-2-thalia-en',''],
+  ['cartesia','cartesia_secret','db6b0ed5-d5d3-463d-ae85-518a07d3c2b4','sonic-3.6'],
+  ['speechify','speechify_secret','geffen_32','simba-3.5'],
+  ['smallest','smallest_secret','kaitlyn','lightning_v3.1_pro'],
+  ['inworld','inworld_secret','Dennis','inworld-tts-2'],
+  ['rime','rime_secret','astra',''],
+  ['fish','fish_secret','default','s2.1-pro-free']
+ ];
+ for(const [provider,api_key,voice,model] of newProviders){
+   const saved=await cfg({type:'save',provider,api_key,voice,model,language:'en'});
+   assert.equal(saved.ok,true,'save '+provider+': '+JSON.stringify(saved));
+   await verifySession(provider);
+ }
+ assert.equal((await cfg({type:'catalog',provider:'google',kind:'voices'})).items[0].id,'en-US-Wavenet-F');
+ assert.equal((await cfg({type:'catalog',provider:'gemini',kind:'models'})).items.length,1);
+ assert.equal((await cfg({type:'catalog',provider:'gemini',kind:'voices'})).supported,false);
+ assert.equal((await cfg({type:'catalog',provider:'elevenlabs',kind:'models'})).items[0].id,'eleven_flash_v2_5');
+ assert.equal((await cfg({type:'catalog',provider:'elevenlabs',kind:'voices'})).items[0].label,'George');
+ assert.equal((await cfg({type:'catalog',provider:'azure',kind:'voices'})).items[0].id,'en-US-JennyNeural');
+ assert.equal((await cfg({type:'catalog',provider:'homeassistant',kind:'voices'})).items[0].id,'tts.piper');
+ const deepgramCatalog=await cfg({type:'catalog',provider:'deepgram',kind:'voices'});
+ assert.equal(deepgramCatalog.items.length,1);assert.equal(deepgramCatalog.items[0].id,'aura-2-thalia-en');
+ const cartesiaModels=await cfg({type:'catalog',provider:'cartesia',kind:'models'});
+ assert.equal(cartesiaModels.items.length,1);assert.equal(cartesiaModels.items[0].id,'sonic-3.6');
+ const cartesiaVoices=await cfg({type:'catalog',provider:'cartesia',kind:'voices'});
+ assert.equal(cartesiaVoices.items[0].label,'Skylar');assert.equal(cartesiaVoices.next_cursor,'page+=/');
+ assert.equal((await cfg({type:'catalog',provider:'cartesia',kind:'voices',cursor:'page+=/'})).ok,true);
+ assert.equal((await cfg({type:'catalog',provider:'speechify',kind:'models'})).items[0].id,'simba-3.5');
+ assert.equal((await cfg({type:'catalog',provider:'speechify',kind:'voices',model:'simba-3.5'})).items[0].label,'Geffen');
+ assert.equal((await cfg({type:'catalog',provider:'smallest',kind:'voices',model:'lightning_v3.1_pro'})).items[0].id,'kaitlyn');
+ assert.equal((await cfg({type:'catalog',provider:'inworld',kind:'voices'})).items[0].id,'Dennis');
+ assert.equal((await cfg({type:'catalog',provider:'rime',kind:'voices'})).items.length,3);
+ assert.equal((await cfg({type:'catalog',provider:'fish',kind:'voices'})).items[0].id,'fishvoice123');
+ assert.equal((await cfg({type:'catalog',provider:'rime',kind:'models'})).supported,false);
+ assert.equal((await cfg({type:'catalog',provider:'fish',kind:'voices',cursor:'\nunsafe'})).ok,false);
+ assert.equal((await cfg({type:'catalog',provider:'fish',kind:'invalid'})).ok,false);
+ assert.ok(!requests.some(x=>x.url.includes('malicious.example')));
+ assert.ok(requests.some(x=>x.url.includes('api.cartesia.ai/tts/bytes')));
+ assert.ok(requests.some(x=>x.url.includes('api.deepgram.com/v1/speak')));
+ // Restore HA as default for the original status, forget and no-credential checks below.
+ r=await cfg({type:'save',provider:'homeassistant',api_key:'',voice:'tts.piper',
+   endpoint:'http://192.168.1.2:8123'});
+ assert.equal(r.ok,true);
+
  const c=await req('tts_status');
  assert.equal(c.ok,true);assert.equal(c.data.provider,'homeassistant');
  assert.equal(c.data.configured,true);
@@ -114,5 +188,5 @@ async function verifySession(provider){
  assert.equal((await req('tts_prepare',{text:'hi'})).code,'AUTH_REQUIRED');
  assert.ok(!requests.some(x=>x.url.includes('api.openai.com')));
  assert.ok(requests.length>=6);
- console.log('PASS: five providers, provider-neutral API, permissions, session integrity');
+ console.log('PASS: 12 provider adapters, live model/voice catalogs, pagination and secure TTS');
 })().catch(e=>{console.error(e);process.exitCode=1;});
