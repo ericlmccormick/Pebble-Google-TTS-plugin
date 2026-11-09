@@ -135,6 +135,12 @@ All responses are JSON encoded in result.text. Only two permissions are declared
 
 Audio uses a verified canonical WAV format followed by phone-side IMA-ADPCM encoding for Bluetooth; the watch decodes and plays the audio. Watch hardware without a speaker cannot output speech. Home Assistant currently requires a TTS engine that returns WAV; MP3/Opus is rejected instead of producing audio noise.
 
+## Audio continuity and SDK compatibility
+
+The SDK now uses an explicit end-of-response handshake. The JavaScript SDK sends `AUDIO_STREAM_END` **after the last audio packet**; the native C SDK keeps the speaker open through normal Bluetooth/synthesis gaps and drains it only after that end marker. A 30-second inactivity failsafe flushes partial PCM and closes a genuinely abandoned stream.
+
+**Copy the current JavaScript and C SDK files together.** Mixing an old native receiver with a new sender, or vice versa, can cut off playback between sentences. Both SDK files retain the same public `speak(text)` API and plugin action names, so provider integrations do not change. The SDK now also includes host-simulated native speaker lifecycle tests.
+
 ## Builds and tests
 
 GitHub Actions tests all twelve provider adapters and their discovery endpoints using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Universal-TTS/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
