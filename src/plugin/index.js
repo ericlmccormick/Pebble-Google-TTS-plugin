@@ -375,6 +375,7 @@ function normalizeCatalog(raw,p,kind,offset,serverPaged){
       if(p==='google'&&x.languageCodes&&x.languageCodes.length)label+= ' ('+x.languageCodes[0]+')';
       if(p==='azure')label=(x.DisplayName||x.ShortName||id)+' ('+(x.Locale||'')+')';
       if(p==='deepgram')label=id+' · '+(x.metadata&&x.metadata.accent||'');
+      if(p==='rime'&&(x.lang||x.language))label=id+' ('+(x.lang||x.language)+')';
     }
     if(p==='deepgram'&&(!id||!/^aura(?:-2)?-/.test(id)))continue; // REST only, no Flux WS
     if(p==='gemini'&&(!id||id.toLowerCase().indexOf('tts')<0))continue;
@@ -400,7 +401,7 @@ async function discoverCatalog(p,kind,cursor,model){
   var allowed=kind==='models'?['gemini','elevenlabs','cartesia','speechify']:
     ['google','elevenlabs','azure','homeassistant','deepgram','cartesia','speechify','smallest','inworld','rime','fish'];
   if(allowed.indexOf(p)<0)return {ok:true,supported:false,items:[],note:'This provider does not publish a live '+kind+' catalog. Enter a compatible ID manually.'};
-  if(typeof cursor!=='string'||cursor.length>180||!/^[a-zA-Z0-9_.-]*$/.test(cursor))
+  if(typeof cursor!=='string'||cursor.length>180||/[\u0000-\u001f\u007f]/.test(cursor))
     return {ok:false,error:'Invalid pagination cursor.'};
   var token=await Pebble.secureStorage.getItem(keyFor(p));
   if(!token)return {ok:false,error:'Save this provider’s API key/token before loading its catalog.'};
