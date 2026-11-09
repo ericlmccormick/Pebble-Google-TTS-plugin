@@ -46,6 +46,13 @@ a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}
       <option value="elevenlabs">ElevenLabs</option>
       <option value="azure">Microsoft Azure Speech</option>
       <option value="homeassistant">Home Assistant / Piper (local)</option>
+      <option value="deepgram">Deepgram Aura</option>
+      <option value="cartesia">Cartesia Sonic</option>
+      <option value="speechify">Speechify</option>
+      <option value="smallest">Smallest AI Lightning</option>
+      <option value="inworld">Inworld AI</option>
+      <option value="rime">Rime Coda</option>
+      <option value="fish">Fish Audio</option>
     </select>
     <p class="hint">Choose one provider as the default. You can save credentials for several providers.</p>
   </div>
@@ -70,20 +77,34 @@ a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}
 <section class="panel" aria-labelledby="voice-heading">
   <div class="panel-head"><span class="step">3</span><h2 id="voice-heading">Voice &amp; model</h2></div>
   <div class="field"><label for="voice">Default voice / voice ID / TTS entity</label>
-    <input id="voice" list="voiceHints" autocapitalize="off" spellcheck="false" placeholder="Voice name">
-    <datalist id="voiceHints">
-      <option value="en-US-Wavenet-F"><option value="en-US-Neural2-F">
-      <option value="en-US-Chirp3-HD-Kore"><option value="Kore"><option value="Aoede"><option value="Puck">
-      <option value="en-US-JennyNeural"><option value="en-US-GuyNeural">
-      <option value="tts.piper"><option value="tts.home_assistant_cloud">
-    </datalist>
+    <input id="voice" autocapitalize="off" spellcheck="false" placeholder="Voice name or ID">
+
     <p class="hint" id="voiceHelp">Voice selection is specific to each provider.</p>
   </div>
   <div id="modelField" class="field hidden"><label for="model">Speech model</label>
     <input id="model" autocomplete="off" spellcheck="false">
     <p class="hint" id="modelHelp"></p>
   </div>
-  <div class="note">Audio output is normalized to 8 kHz mono PCM16 WAV and transferred using verified chunks. Existing Google TTS apps continue to work without changes.</div>
+  <div id="languageField" class="field hidden"><label for="language">Rime voice language</label>
+    <input id="language" value="en" autocomplete="off" spellcheck="false" placeholder="en">
+  </div>
+  <div class="field">
+    <div class="actions">
+      <button id="refreshCatalog" class="secondary" type="button">Browse live choices</button>
+      <button id="moreVoices" class="secondary hidden" type="button">Load more voices</button>
+    </div>
+    <p class="hint">After saving your API key, live models and voices are retrieved from that provider. No cached or hard-coded catalog is used. If the provider has no listing endpoint, you can still enter a voice/model ID manually.</p>
+  </div>
+  <div id="modelCatalogField" class="field hidden">
+    <label for="modelCatalog">Available models (live)</label>
+    <select id="modelCatalog" disabled><option value="">Save credentials to browse</option></select>
+  </div>
+  <div id="voiceCatalogField" class="field">
+    <label for="voiceCatalog">Available voices (live)</label>
+    <select id="voiceCatalog" disabled><option value="">Save credentials to browse</option></select>
+  </div>
+  <p class="hint" id="catalogStatus" aria-live="polite">Select a provider to browse available voices and models.</p>
+  <div class="note">All voices are normalized to 8 kHz mono WAV and played through the same Pebble SDK. Voice and model choices belong to the user, never the watch app.</div>
 </section>
 <section class="panel" aria-labelledby="save-heading">
   <div class="panel-head"><span class="step">4</span><h2 id="save-heading">Save &amp; test</h2></div>
@@ -102,13 +123,20 @@ a{color:var(--accent)}.fine{font-size:12px;margin:13px 4px 0}
 (function(){
 'use strict';
 var $=function(id){return document.getElementById(id);};
-var state={provider:'google',providers:[]};
+var state={provider:'google',providers:[],epoch:0,voiceCursor:'',voiceSupported:true};
 var info={
 google:{voice:'en-US-Wavenet-F',model:'',help:'Google Cloud project with Text-to-Speech API enabled and billing set up. Existing Google keys and voice choices are preserved.',key:'Google Cloud TTS API key',voiceHelp:'Examples: en-US-Wavenet-F, en-US-Neural2-F, en-US-Chirp3-HD-Kore.'},
 gemini:{voice:'Kore',model:'gemini-2.5-flash-preview-tts',help:'Use a Google AI Studio Gemini API key. The TTS model is a preview and may have separate quotas.',key:'Gemini API key',voiceHelp:'Gemini prebuilt voices include Kore, Aoede, Puck and Zephyr.',modelHelp:'Default: gemini-2.5-flash-preview-tts.'},
 elevenlabs:{voice:'JBFqnCBsd6RMkjVDRZzb',model:'eleven_flash_v2_5',help:'Use an ElevenLabs API key and a voice ID from your voice library. PCM output may require plan permissions.',key:'ElevenLabs API key',voiceHelp:'Paste your ElevenLabs voice ID (not a display name).',modelHelp:'Default: eleven_flash_v2_5; other text-to-speech-capable model IDs are supported.'},
 azure:{voice:'en-US-JennyNeural',model:'',help:'Use an Azure Speech resource key and its region (for example eastus). Output requests native 8 kHz WAV.',key:'Azure Speech resource key',voiceHelp:'Examples: en-US-JennyNeural, en-US-GuyNeural.'},
-homeassistant:{voice:'tts.piper',model:'',help:'Connect to Home Assistant over your local network with a long-lived access token. The TTS entity must return a WAV through /api/tts_get_url.',key:'Home Assistant long-lived access token',voiceHelp:'Enter the entity ID, e.g. tts.piper or tts.home_assistant_cloud.'}
+homeassistant:{voice:'tts.piper',model:'',help:'Connect to Home Assistant over your local network with a long-lived access token. The TTS entity must return a WAV through /api/tts_get_url.',key:'Home Assistant long-lived access token',voiceHelp:'Select a TTS entity from the live Home Assistant states list.'},
+deepgram:{voice:'aura-2-thalia-en',model:'',help:'Deepgram Aura voices use the REST API. Newer Flux models require WebSockets and are excluded from this audio adapter.',key:'Deepgram API key',voiceHelp:'Browse Aura voices from the provider catalog (voice ID includes the model, e.g. aura-2-thalia-en).'},
+cartesia:{voice:'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',model:'sonic-3.6',help:'Use a Cartesia API key. Live voices and Sonic model IDs are retrieved from Cartesia.',key:'Cartesia API key',voiceHelp:'Choose a voice ID from the live Cartesia voice library.',modelHelp:'Live Sonic TTS model catalog; available IDs vary.'},
+speechify:{voice:'geffen_32',model:'simba-3.5',help:'Use a Speechify Build API key. Live voices and allowed Simba models are retrieved from your workspace.',key:'Speechify API key',voiceHelp:'Browse voices and select one available to your workspace.',modelHelp:'Live API exposes which Simba model IDs you can use.'},
+smallest:{voice:'kaitlyn',model:'lightning_v3.1_pro',help:'Smallest AI Lightning v3.1 Pro. The older Standard model retires November 30, 2026; do not use it for new installs.',key:'Smallest AI API key',voiceHelp:'Browse live Lightning Pro voices. Model and voice pools must match.',modelHelp:'Stable Lightning v3.1 Pro recommended; models currently have no dedicated API listing.'},
+inworld:{voice:'Dennis',model:'inworld-tts-2',help:'Use an Inworld API credential (Base64-encoded key copied from Inworld Portal). Voice discovery is live; model IDs follow Inworld documentation.',key:'Inworld API credential',voiceHelp:'Browse system and workspace voices from the live Inworld catalog.',modelHelp:'No dynamic TTS-model list endpoint. Use inworld-tts-2 or its flash variant.'},
+rime:{voice:'astra',model:'',help:'Rime Coda REST synthesis with public live voice catalog. Choose voice and matching language.',key:'Rime API key',voiceHelp:'Browse the live Rime public Coda voice catalog. Match the voice language.',modelHelp:''},
+fish:{voice:'default',model:'s2.1-pro-free',help:'Fish Audio REST TTS. Browse voices in your accessible model library; the engine/model header is entered manually.',key:'Fish Audio API key',voiceHelp:'Choose a voice model ID; default means no reference voice.',modelHelp:'Fish synthesis model ID (s2.1-pro-free for developer tier); this is separate from voice model IDs.'}
 };
 function send(msg){return Pebble.sendMessage('plugin',msg);}
 function status(message,kind){var el=$('status');el.textContent=message;el.className=kind||'';}
@@ -122,11 +150,20 @@ function redraw(){
   $('modelHelp').textContent=c.modelHelp||'';
   $('region').value=saved&&saved.region?saved.region:'';
   $('endpoint').value=saved&&saved.endpoint?saved.endpoint:'';
+  $('language').value=saved&&saved.language?saved.language:'en';
   $('providerHelp').textContent=c.help;
   $('key').value='';
-  setField('modelField',p==='gemini'||p==='elevenlabs');
+  setField('modelField',['gemini','elevenlabs','cartesia','speechify','smallest','inworld','fish'].indexOf(p)>=0);
+  setField('modelCatalogField',['gemini','elevenlabs','cartesia','speechify'].indexOf(p)>=0);
+  setField('languageField',p==='rime');
   setField('regionField',p==='azure');
   setField('endpointField',p==='homeassistant');
+  state.epoch++;
+  state.voiceCursor='';
+  $('voiceCatalog').innerHTML='<option value="">Select a provider voice</option>';
+  $('modelCatalog').innerHTML='<option value="">Select a provider model</option>';
+  $('moreVoices').classList.add('hidden');
+  $('catalogStatus').textContent='Save credentials to browse live voices and models.';
   $('providersSummary').innerHTML='';
   state.providers.forEach(function(x){
     var el=document.createElement('span');el.className='chip'+(x.configured?' ready':'');
@@ -140,20 +177,79 @@ function load(selected){
     if(!r.ok)throw Error(r.error||'Settings unavailable');
     state.provider=r.provider||'google';state.providers=r.providers||[];
     $('provider').value=selected||state.provider;redraw();
+    var current=state.providers.find(function(x){return x.id===$('provider').value;});
+    if(current&&current.configured)refreshCatalog();
   }).catch(function(e){status('Settings unavailable: '+String(e.message||e),'error');});
 }
-$('provider').addEventListener('change',redraw);
+$('provider').addEventListener('change',function(){redraw();var current=state.providers.find(function(x){return x.id===$('provider').value;});if(current&&current.configured)refreshCatalog();});
 function save(makeDefault){
   var p=$('provider').value,m={type:'save',provider:p,api_key:$('key').value,
     voice:$('voice').value.trim(),model:$('model').value.trim(),region:$('region').value.trim(),
-    endpoint:$('endpoint').value.trim(),make_default:makeDefault};
+    endpoint:$('endpoint').value.trim(),language:$('language').value.trim(),make_default:makeDefault};
   $('save').disabled=true;$('saveOnly').disabled=true;status('Saving '+p+' settings…');
   return send(m).then(function(r){
     if(!r.ok)throw Error(r.error||'Could not save');
-    return load(p).then(function(){status('Saved '+p+(makeDefault?' as the default speech provider.':'. Default provider unchanged.'),'ok');});
+    return load(p).then(function(){status('Saved '+p+(makeDefault?' as the default speech provider.':'. Default provider unchanged.')+' Live catalog refreshed.','ok');});
   }).catch(function(e){status('Save failed: '+String(e.message||e),'error');})
     .then(function(){$('save').disabled=false;$('saveOnly').disabled=false;});
 }
+
+function catalogRequest(kind,append){
+  var p=$('provider').value,epoch=state.epoch,model=$('model').value.trim();
+  var target=$(kind==='models'?'modelCatalog':'voiceCatalog'),cursor=append?state.voiceCursor:'';
+  if(!append){target.innerHTML='<option value="">Loading '+kind+'…</option>';target.disabled=true;}
+  $('refreshCatalog').disabled=true;
+  $('catalogStatus').textContent='Looking up '+kind+' for '+p+'…';
+  return send({type:'catalog',provider:p,kind:kind,cursor:cursor,model:model}).then(function(result){
+    if(epoch!==state.epoch || p!==$('provider').value)return;
+    if(!result.ok)throw Error(result.error||'Catalog unavailable');
+    if(!result.supported){
+      target.innerHTML='<option value="">No live catalog — enter ID manually</option>';
+      target.disabled=true;
+      $('catalogStatus').textContent=result.note||'No live API for this catalog.';
+      state.voiceCursor='';
+      $('moreVoices').classList.add('hidden');
+      return;
+    }
+    if(!append)target.innerHTML='<option value="">Choose from live '+kind+'…</option>';
+    var existing={},opts=target.options;
+    for(var j=0;j<opts.length;j++)existing[opts[j].value]=true;
+    (result.items||[]).forEach(function(item){
+      if(!item||!item.id||existing[item.id])return;
+      var opt=document.createElement('option');opt.value=item.id;opt.textContent=item.label||item.id;
+      target.appendChild(opt);existing[item.id]=true;
+    });
+    target.disabled=target.options.length<=1;
+    var selected=$(kind==='models'?'model':'voice').value;
+    for(var i=0;i<target.options.length;i++)if(target.options[i].value===selected){target.value=selected;break;}
+    if(kind==='voices'){
+      state.voiceCursor=result.next_cursor||'';
+      $('moreVoices').classList.toggle('hidden',!state.voiceCursor);
+    }
+    $('catalogStatus').textContent=target.options.length-1+' '+kind+' loaded from '+p+
+       (result.next_cursor?' · More available':'')+
+       '. Choose one or enter an ID manually.';
+  }).catch(function(e){
+    if(epoch!==state.epoch)return;
+    $('catalogStatus').textContent='Catalog lookup failed: '+String(e.message||e)+'. Manual ID entry still works.';
+    if(!append){target.innerHTML='<option value="">Lookup unavailable — use manual ID</option>';target.disabled=true;}
+  }).then(function(){$('refreshCatalog').disabled=false;});
+}
+function refreshCatalog(){
+  var p=$('provider').value,epoch=state.epoch,hasModels=['gemini','elevenlabs','cartesia','speechify'].indexOf(p)>=0;
+  return (hasModels?catalogRequest('models',false):Promise.resolve()).then(function(){
+    if(epoch===state.epoch)return catalogRequest('voices',false);
+  });
+}
+$('refreshCatalog').addEventListener('click',refreshCatalog);
+$('moreVoices').addEventListener('click',function(){if(state.voiceCursor)catalogRequest('voices',true);});
+$('modelCatalog').addEventListener('change',function(){
+  if(this.value){$('model').value=this.value;catalogRequest('voices',false);}
+});
+$('voiceCatalog').addEventListener('change',function(){
+  if(this.value)$('voice').value=this.value;
+});
+
 $('save').addEventListener('click',function(){save(true);});
 $('saveOnly').addEventListener('click',function(){save(false);});
 $('test').addEventListener('click',function(){

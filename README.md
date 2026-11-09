@@ -2,7 +2,7 @@
 
 **One speech API for Pebble watch apps and watchfaces.** Apps send text, and Universal TTS chooses the user's configured provider. Watch apps never store provider keys, talk directly to vendor APIs, or implement resampling/audio transfer.
 
-Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **1.1.0**.
+Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **1.2.0**.
 
 ## Quick start — 3 reusable SDK files
 
@@ -84,19 +84,37 @@ Check universal_tts_supported() before offering a voice UI. To trigger speech fr
 
 Pebble's plugin API is a phone-side preview; see [Pebble plugin development](https://developer.repebble.com/guides/plugins/preview/). Enable the preview, install Universal TTS and configure a provider on the phone.
 
-## TTS providers (chosen by user, not app)
+## TTS providers and live voice/model discovery
 
-| Provider | User configuration |
-| --- | --- |
-| Google Cloud Text-to-Speech | API key, WaveNet / Neural2 / Chirp voice |
-| Gemini TTS | Google AI Studio key, TTS model, voice |
-| ElevenLabs | API key, model and voice ID (PCM permission may depend on account) |
-| Microsoft Azure Speech | Speech key, region, voice |
-| Home Assistant / Piper | Private-LAN HA URL, long-lived token, WAV-capable TTS entity |
+Version 1.2 supports **twelve** REST-based synthesis providers. All of them feed the same verified 8 kHz WAV/ADPCM watch transport; consumers still call only `tts.speak(text)`.
 
-The provider's credentials are stored in Pebble secureStorage and are never returned to the consuming app. The speech text may be transmitted to the selected provider and incur charges. There is no automatic failover to another service.
+| Provider | Live voice lookup | Live model lookup | Notes |
+| --- | --- | --- | --- |
+| Google Cloud TTS | GET /v1/voices | Not applicable | API key, voice; Google's voice name identifies family |
+| Gemini TTS | Not published | GET /v1beta/models (filtered for TTS) | API key, prebuilt voice entered manually |
+| ElevenLabs | GET /v1/voices | GET /v1/models | API key; voice IDs; PCM access may depend on plan |
+| Microsoft Azure Speech | GET /cognitiveservices/voices/list | Not applicable | Region-specific Azure Speech key |
+| Home Assistant / Piper | GET /api/states filtered to tts entities | Not applicable | HA token and LAN URL; requires WAV-capable engine |
+| Deepgram Aura | GET /v1/models filtered to Aura REST TTS | Not applicable | Voice name is the Aura model ID; Flux WebSocket not included |
+| Cartesia Sonic | GET /voices (paged) | GET /models | Authenticated API-key requests with Cartesia-Version header |
+| Speechify | GET /v1/voices (paged) | GET /v1/audio/models | Workspace-specific available voices/models |
+| Smallest AI | Model-specific GET /get_voices | No separate model registry | Use Lightning v3.1 Pro and a matching voice |
+| Inworld AI | GET /voices/v1/voices (paged) | Not published | Basic API credential copied from Inworld Portal |
+| Rime Coda | Public Rime voice catalog (updated by Rime) | Coda REST only | Set voice and its language; Mist v3 needs another adapter |
+| Fish Audio | GET /model (paged voice library) | No synthesis-engine list endpoint | API key, optional voice-model ID, synthesis engine ID |
 
-**OpenAI deprecation:** OpenAI is retiring the old tts-1, tts-1-hd and gpt-4o-mini-tts Speech models on **January 6, 2027** and recommends gpt-realtime-2.1-mini via the Realtime API. The obsolete Speech endpoint is **not present in Universal TTS**. A future Realtime adapter would be a new implementation. [Official retirement notice](https://developers.openai.com/api/docs/deprecations). Amazon Polly is not implemented.
+**Live lookups are settings-only**, not exposed to consuming apps. Select a provider, save its API key/token, then choose **Browse live choices**. Configured providers also try to load their catalogs automatically on selection. Choose from the dropdown or enter IDs manually. The plugin normalizes returned IDs/names, pages voice lists, and indicates clearly when a service does not publish a model or voice listing API. Catalogs are not billed as synthesis calls (provider API quotas may apply).
+
+### Provider API notes
+
+- **Credentials stay in Pebble.secureStorage**. The voice/model discovery response only contains IDs and labels; it never contains credentials.
+- **Provider choice remains user-controlled**. A consuming app cannot request a specific provider/voice via the public action; no cross-provider silent failover occurs.
+- **Model retirement:** Smallest AI's Standard Lightning v3.1 retires November 30, 2026; Pro is the recommended default. Rime's retired Arcana and Mist v1/v2 models are not supported. Speechify's older Simba 1.6 models are also being retired. Model availability is always confirmed by the provider, not guaranteed by placeholder defaults.
+- **Format limits:** Deepgram Aura REST is supported, but Flux requires WebSockets. Home Assistant TTS output must be WAV. Other added adapters request native WAV or PCM and resample to 8 kHz.
+- **OpenAI:** Older tts-1, tts-1-hd and gpt-4o-mini-tts Speech models are scheduled for shutdown on January 6, 2027. They are deliberately not included. OpenAI's replacement gpt-realtime-2.1-mini requires a separate Realtime adapter. [Official retirement notice](https://developers.openai.com/api/docs/deprecations).
+- **Not implemented:** OpenAI Realtime requires a separate session/streaming adapter, and Amazon Polly requires AWS request signing. Resemble AI's former hosted generative voice products have moved to a research archive and are no longer offered as commercial paid products; its historical hosted TTS API is deliberately excluded. These should not be presented as working provider choices.
+
+Discovery and synthesis use fixed, documented provider hosts. The only configurable host is Home Assistant, validated as a LAN address or HTTPS URL. Keys are never included in normal plugin status responses.
 
 ## Public plugin API v1
 
@@ -119,6 +137,6 @@ Audio uses a verified canonical WAV format followed by phone-side IMA-ADPCM enco
 
 ## Builds and tests
 
-GitHub Actions tests the five provider adapters using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Universal-TTS/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
+GitHub Actions tests all twelve provider adapters and their discovery endpoints using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Universal-TTS/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
 
 Automated tests do not guarantee live provider authorization, sound quality, or playback on each Pebble model. SDK files are MIT licensed (sdk/LICENSE).
