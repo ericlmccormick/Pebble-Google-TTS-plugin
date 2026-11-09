@@ -125,6 +125,33 @@
             "UniversalTtsRead"
           ]
         }
+      ],
+      "sources": [
+        {
+          "category": "tts",
+          "items": [
+            "configured"
+          ],
+          "properties": {
+            "name": [
+              "shortText"
+            ],
+            "configured": [
+              "boolean"
+            ],
+            "provider": [
+              "shortText"
+            ],
+            "voice": [
+              "shortText"
+            ]
+          },
+          "supportsMultiple": false,
+          "suggestedRefreshIntervalSec": 120,
+          "callerPermissions": [
+            "UniversalTtsRead"
+          ]
+        }
       ]
     }
   },
