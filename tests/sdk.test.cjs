@@ -19,7 +19,7 @@ wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeU
 for(let i=44;i<wav.length;i+=2)wav.writeInt16LE(Math.round(6000*Math.sin(i/75)),i);
 function fnv(buf){let h=2166136261>>>0;for(const b of buf)h=Math.imul((h^b)>>>0,16777619)>>>0;return h>>>0;}
 const seen=[],messages=[];
-let finished,rejected;
+let finished,rejected,ttsClient=null;
 const complete=new Promise((resolve,reject)=>{finished=resolve;rejected=reject;});
 const Pebble={
  invokeAction:async function(req){
@@ -43,12 +43,14 @@ const Pebble={
  sendAppMessage:function(payload,success,error){
    messages.push(payload);
    if(success)success();
+   if(payload.TEXT && /^(AUDIO_CHUNK|AUDIO_SENTENCE_END|AUDIO_STREAM_END)$/.test(payload.COMMAND))
+     setImmediate(()=>ttsClient.handleMessage({COMMAND:'AUDIO_ACK',TEXT:payload.TEXT}));
  }
 };
 (async()=>{
  const diagStore=new Map();
  const storage={getItem:k=>diagStore.get(k)||null,setItem:(k,v)=>diagStore.set(k,String(v))};
- const tts=lib.create({Pebble,storage,onComplete:finished,onError:rejected});
+ const tts=ttsClient=lib.create({Pebble,storage,onComplete:finished,onError:rejected});
  await assert.rejects(tts.speak(''),/must not be empty/i);
  await tts.speak('Hello from Pebble!');
  await Promise.race([complete,new Promise((_,reject)=>setTimeout(()=>reject(Error('TTS transport did not finish')),5000))]);
@@ -59,6 +61,7 @@ const Pebble={
  assert.ok(messages.some(x=>x.COMMAND==='AUDIO_RESET'));
  assert.ok(messages.some(x=>x.COMMAND==='AUDIO_CHUNK'&&Array.isArray(x.CHUNK)&&x.CHUNK.length));
  assert.ok(messages.some(x=>x.COMMAND==='AUDIO_SENTENCE_END'));
+ assert.ok(messages.some(x=>x.COMMAND==='AUDIO_CHUNK'&&x.TEXT&&x.TEXT.includes(':')));
  assert.equal(messages.filter(x=>x.COMMAND==='AUDIO_STREAM_END').length,1);
  assert.ok(messages.findIndex(x=>x.COMMAND==='AUDIO_STREAM_END')>messages.findIndex(x=>x.COMMAND==='AUDIO_SENTENCE_END'));
  assert.equal(messages.some(x=>x.COMMAND==='AUDIO_STOP'),false);
