@@ -320,6 +320,152 @@ async function providerSummary(){
   }
   return arr;
 }
+
+/* Config-only live catalog discovery. Fixed HTTPS API hosts and a sanitized
+ * HA origin avoid arbitrary URL injection and leaking stored access tokens.
+ * Responses contain ONLY normalized, non-secret IDs and display names.
+ * The caller app API is unchanged: no provider/model overrides in speak().
+ */
+function catalogItem(id,label){
+  id=String(id||'').trim();label=String(label||id).trim();
+  if(!id||id.length>180||!label)return null;
+  return {id:id,label:label.slice(0,110)};
+}
+function catalogList(raw,p,kind){
+  if(p==='deepgram')return raw&&raw.tts||[];
+  if(p==='rime'){
+    var root=raw&&(raw.coda||raw.Coda||raw);
+    // Rime's public catalog may group speakers by language or by model.
+    var result=[],seen={};
+    function visit(v,depth){
+      if(depth>5||result.length>1600||v==null)return;
+      if(typeof v==='string'){if(!seen[v]){seen[v]=1;result.push({speaker:v});}return;}
+      if(Array.isArray(v)){v.forEach(function(x){visit(x,depth+1);});return;}
+      if(typeof v!=='object')return;
+      if(v.speaker||v.speaker_id||v.voiceId||v.id){
+        result.push(v);return;
+      }
+      Object.keys(v).forEach(function(k){if(!/^(metadata|description|count|total|version|generatedAt)$/i.test(k))visit(v[k],depth+1);});
+    }
+    visit(root,0);
+    return result;
+  }
+  if(Array.isArray(raw))return raw;
+  if(!raw||typeof raw!=='object')return [];
+  return raw.voices||raw.models||raw.items||raw.data||raw.tts||raw.results||[];
+}
+function normalizeCatalog(raw,p,kind,offset,serverPaged){
+  var list=catalogList(raw,p,kind);
+  if(!Array.isArray(list))list=[];
+  var filtered=[];
+  for(var i=0;i<list.length;i++){
+    var x=list[i],id,label;
+    if(typeof x==='string'){id=x;label=x;}
+    else if(x&&typeof x==='object'){
+      if(p==='google')id=x.name;
+      else if(p==='azure')id=x.ShortName||x.shortName;
+      else if(p==='homeassistant')id=x.entity_id;
+      else if(p==='deepgram')id=x.canonical_name;
+      else if(p==='rime')id=x.speaker||x.speaker_id||x.voiceId||x.id;
+      else if(p==='smallest')id=x.voiceId||x.voice_id||x.id;
+      else if(p==='fish')id=x._id||x.id||x.uuid;
+      else if(p==='gemini')id=String(x.name||'').replace(/^models\//,'');
+      else id=x.voice_id||x.voiceId||x.id||x.model_id||x.name;
+      label=x.display_name||x.displayName||x.DisplayName||x.name||x.label||x.title||x.speaker||id;
+      if(p==='google'&&x.languageCodes&&x.languageCodes.length)label+= ' ('+x.languageCodes[0]+')';
+      if(p==='azure')label=(x.DisplayName||x.ShortName||id)+' ('+(x.Locale||'')+')';
+      if(p==='deepgram')label=id+' · '+(x.metadata&&x.metadata.accent||'');
+    }
+    if(p==='deepgram'&&(!id||!/^aura(?:-2)?-/.test(id)))continue; // REST only, no Flux WS
+    if(p==='gemini'&&(!id||id.toLowerCase().indexOf('tts')<0))continue;
+    if(p==='cartesia'&&kind==='models'&&x&&x.capability&&x.capability!=='tts')continue;
+    if(p==='elevenlabs'&&kind==='models'&&x&&x.can_do_text_to_speech===false)continue;
+    if(p==='homeassistant'&&(!id||id.indexOf('tts.')!==0))continue;
+    var item=catalogItem(id,label);
+    if(item)filtered.push(item);
+  }
+  // Avoid duplicates and gigantic phone configuration messages.
+  var unique=[],seen={};
+  filtered.forEach(function(x){if(!seen[x.id]){seen[x.id]=1;unique.push(x);}});
+  var begin=serverPaged?0:offset,items=unique.slice(begin,begin+60);
+  var next='';
+  if(serverPaged){
+    next=String(raw.next_cursor||raw.nextPageToken||raw.next_page||'');
+    if(!raw.has_more && !raw.nextPageToken && !raw.next_page)next='';
+  }else if(unique.length>begin+60)next=String(begin+60);
+  return {items:items,next_cursor:next};
+}
+async function discoverCatalog(p,kind,cursor,model){
+  if(kind!=='voices'&&kind!=='models')return {ok:false,error:'Invalid catalog type.'};
+  var allowed=kind==='models'?['gemini','elevenlabs','cartesia','speechify']:
+    ['google','elevenlabs','azure','homeassistant','deepgram','cartesia','speechify','smallest','inworld','rime','fish'];
+  if(allowed.indexOf(p)<0)return {ok:true,supported:false,items:[],note:'This provider does not publish a live '+kind+' catalog. Enter a compatible ID manually.'};
+  if(typeof cursor!=='string'||cursor.length>180||!/^[a-zA-Z0-9_.-]*$/.test(cursor))
+    return {ok:false,error:'Invalid pagination cursor.'};
+  var token=await Pebble.secureStorage.getItem(keyFor(p));
+  if(!token)return {ok:false,error:'Save this provider’s API key/token before loading its catalog.'};
+  var url='',headers={},paged=false,offset=/^\d+$/.test(cursor)?Number(cursor):0;
+  if(!Number.isSafeInteger(offset)||offset>5000)return {ok:false,error:'Catalog offset too large.'};
+  var encoded=encodeURIComponent;
+  if(p==='google'){
+    url='https://texttospeech.googleapis.com/v1/voices';
+    headers={'x-goog-api-key':token};
+  }else if(p==='gemini'){
+    url='https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000';
+    headers={'x-goog-api-key':token};
+  }else if(p==='elevenlabs'){
+    url=kind==='voices'?'https://api.elevenlabs.io/v1/voices':'https://api.elevenlabs.io/v1/models';
+    headers={'xi-api-key':token};
+  }else if(p==='azure'){
+    var region=optionFor(p,'region').toLowerCase();
+    if(!/^[a-z0-9-]{2,50}$/.test(region))return {ok:false,error:'Configure the Azure region first.'};
+    url='https://'+region+'.tts.speech.microsoft.com/cognitiveservices/voices/list';
+    headers={'Ocp-Apim-Subscription-Key':token};
+  }else if(p==='homeassistant'){
+    var endpoint=optionFor(p,'endpoint').replace(/\/$/,'');
+    if(!validEndpoint(endpoint))return {ok:false,error:'Configure the Home Assistant URL first.'};
+    url=endpoint+'/api/states';headers={Authorization:'Bearer '+token};
+  }else if(p==='deepgram'){
+    url='https://api.deepgram.com/v1/models';headers={Authorization:'Token '+token};
+  }else if(p==='cartesia'){
+    headers={Authorization:'Bearer '+token,'Cartesia-Version':'2026-08-14'};
+    if(kind==='voices'){
+      url='https://api.cartesia.ai/voices?limit=60'+(cursor?'&starting_after='+encoded(cursor):'');
+      paged=true;
+    }else url='https://api.cartesia.ai/models';
+  }else if(p==='speechify'){
+    headers={Authorization:'Bearer '+token};
+    if(kind==='voices'){
+      url='https://api.speechify.ai/v1/voices?limit=60'+(cursor?'&cursor='+encoded(cursor):'');
+      paged=true;
+      if(validSetting(model))url+='&model='+encoded(model);
+    }else url='https://api.speechify.ai/v1/audio/models';
+  }else if(p==='smallest'){
+    var m=validSetting(model)?model:optionFor(p,'model');
+    // The public catalog is version-specific. Don't mix Standard and Pro voices.
+    var route=m.indexOf('pro')>=0?'lightning-v3.1-pro':'lightning-v3.1';
+    url='https://api.smallest.ai/waves/v1/'+route+'/get_voices';
+    headers={Authorization:'Bearer '+token};
+  }else if(p==='inworld'){
+    url='https://api.inworld.ai/voices/v1/voices?pageSize=60'+(cursor?'&pageToken='+encoded(cursor):'');
+    headers={Authorization:'Basic '+token};paged=true;
+  }else if(p==='rime'){
+    url='https://docs.rime.ai/data/voices/all-v2.json';headers={};
+  }else if(p==='fish'){
+    url='https://api.fish.audio/model?limit=60&offset='+offset;
+    headers={Authorization:'Bearer '+token};paged=true;
+  }
+  try{
+    var res=await fetch(url,{method:'GET',headers:headers});
+    if(!res.ok)return {ok:false,error:providerName(p)+' catalog HTTP '+res.status};
+    var raw=await res.json();
+    var normalized=normalizeCatalog(raw,p,kind,offset,paged);
+    if(p==='fish'&&normalized.items.length===60)normalized.next_cursor=String(offset+60);
+    return {ok:true,supported:true,kind:kind,provider:p,items:normalized.items,next_cursor:normalized.next_cursor,
+      note:normalized.items.length?'Live catalog from '+providerName(p):'No entries returned. You can enter a supported ID manually.'};
+  }catch(e){return {ok:false,error:'Could not load '+providerName(p)+' '+kind+'. Check connection and key permissions.'};}
+}
+
 function rawPcm16(bytes,rate){
   if(!bytes||bytes.length<2||bytes.length%2)return failure('PLUGIN_UNAVAILABLE','Invalid raw PCM16 audio.');
   if(!rate||rate<8000||rate>48000)return failure('PLUGIN_UNAVAILABLE','Unsupported PCM rate.');
@@ -541,6 +687,10 @@ Pebble.registerConfigHandler(async function(message,respond){
   if(!validatedProvider(p)){respond({ok:false,error:'Unknown provider'});return;}
   if(m.type==='status'){
     respond({ok:true,provider:selectedProvider(),providers:await providerSummary()});return;
+  }
+  if(m.type==='catalog'){
+    var result=await discoverCatalog(p,m.kind,String(m.cursor||''),String(m.model||''));
+    respond(result);return;
   }
   if(m.type==='save'){
     if(typeof m.voice!=='string'||!m.voice.trim()||m.voice.length>160){
