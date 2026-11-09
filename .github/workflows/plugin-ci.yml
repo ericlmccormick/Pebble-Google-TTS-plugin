@@ -22,9 +22,10 @@ jobs:
       - name: Validate plugin syntax and tests
         run: |
           node --check src/plugin/index.js
-          node --check sdk/universal_tts_audio.js
+          node --check sdk/universal_tts.js
           node tests/plugin.test.cjs
           node tests/settings_ui.test.cjs
+          node tests/sdk.test.cjs
       - name: Package directly installable Pebble plugin
         run: |
           set -euo pipefail
@@ -44,7 +45,8 @@ jobs:
               appinfo=json.loads(z.read('appinfo.json'))
               assert appinfo['uuid']=='2c5edc42-b096-4f76-b284-1f27907e6502'
               assert appinfo['plugin']['script']=='src/plugin/index.js'
-              assert any(a['name']=='universal_prepare' for a in appinfo['plugin']['actions'])
+              assert [a['name'] for a in appinfo['plugin']['actions']]==['tts_prepare','tts_chunk','tts_release','tts_status']
+              assert len(appinfo['plugin']['definesPermissions'])==2
               assert appinfo['configPage']=='src/config.html'
               assert 'src/config.html' in z.namelist()
               assert 'src/plugin/index.js' in z.namelist()
@@ -75,10 +77,11 @@ jobs:
             git switch --orphan builds/previews
             git rm -rf . >/dev/null 2>&1 || true
           fi
-          rm -f ./Google_Cloud_TTS_plugin.pbw
+          git rm -f --ignore-unmatch Google_Cloud_TTS_plugin.pbw
+          git rm -rf --ignore-unmatch build
           cp /tmp/pebble-plugin-preview/Universal_TTS_plugin.pbw ./
           printf 'Development plugin PBW. Source commit: %s\n' "$GITHUB_SHA" > README.txt
-          git add -A
+          git add Universal_TTS_plugin.pbw README.txt
           if ! git diff --cached --quiet; then
             git commit -m "build: plugin preview from ${GITHUB_SHA}"
             git push origin HEAD:builds/previews
