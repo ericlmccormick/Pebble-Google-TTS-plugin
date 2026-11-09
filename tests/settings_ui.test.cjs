@@ -1,5 +1,5 @@
 'use strict';
-const fs=require('node:fs'),assert=require('node:assert/strict');
+const fs=require('node:fs'),assert=require('node:assert/strict'),vm=require('node:vm');
 const html=fs.readFileSync(__dirname+'/../src/config.html','utf8');
 assert.match(html,/Universal TTS/);
 assert.match(html,/class="panel"/);
