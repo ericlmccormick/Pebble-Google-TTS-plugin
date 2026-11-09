@@ -23,6 +23,7 @@ jobs:
         run: |
           node --check src/plugin/index.js
           node --check sdk/universal_tts.js
+          node --check examples/hello-speech/src/pkjs/index.js
           node tests/plugin.test.cjs
           node tests/settings_ui.test.cjs
           node tests/sdk.test.cjs
