@@ -74,7 +74,7 @@ jobs:
               assert len(appinfo['plugin']['definesPermissions'])==2
               assert len(appinfo['plugin']['sources']) == 1
               source = appinfo['plugin']['sources'][0]
-              assert source['category'] == 'tts'
+              assert source['category'] == 'agent'
               assert source['items'] == ['configured']
               assert source['properties']['configured'] == ['boolean']
               assert appinfo['configPage']=='src/config.html'
