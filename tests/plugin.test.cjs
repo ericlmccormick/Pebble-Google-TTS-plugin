@@ -8,7 +8,7 @@ assert.deepEqual(manifest.pebble.plugin.definesPermissions.map(a=>a.name),
  ['UniversalTtsSpeak','UniversalTtsRead']);
 for(const a of manifest.pebble.plugin.actions) assert.ok(a.callerPermissions.every(p=>p.startsWith('UniversalTts')));
 assert.equal(manifest.pebble.plugin.sources.length,1);
-assert.equal(manifest.pebble.plugin.sources[0].category,'tts');
+assert.equal(manifest.pebble.plugin.sources[0].category,'agent');
 assert.deepEqual(manifest.pebble.plugin.sources[0].items,['configured']);
 assert.deepEqual(manifest.pebble.plugin.sources[0].callerPermissions,['UniversalTtsRead']);
 assert.deepEqual(manifest.pebble.plugin.sources[0].properties.configured,['boolean']);
@@ -83,7 +83,7 @@ function req(name,args){return new Promise(resolve=>action({action:name,args:arg
  error:(code,message)=>resolve({ok:false,code,message})
 }));}
 function cfg(args){return new Promise(resolve=>config(args,resolve));}
-function readConfigured(category='tts',item='configured'){
+function readConfigured(category='agent',item='configured'){
  return new Promise(resolve=>source({category,item},{
   data:payload=>resolve({ok:true,...payload}),
   error:(code,message)=>resolve({ok:false,code,message})
@@ -113,7 +113,7 @@ async function verifySession(provider){
  assert.equal(beforeSource.instances[0].instanceId,'default');
  assert.equal(beforeSource.instances[0].properties.name.shortText.text,'Universal TTS');
  assert.equal(beforeSource.instances[0].properties.configured.boolean.value,false);
- assert.equal((await readConfigured('agent')).code,'INVALID_REQUEST');
+ assert.equal((await readConfigured('tts')).code,'INVALID_REQUEST');
  let r=await req('tts_prepare',{text:'Hello'});
  assert.equal(r.code,'AUTH_REQUIRED');
  r=await req('tts_prepare',{test_tone:true});
