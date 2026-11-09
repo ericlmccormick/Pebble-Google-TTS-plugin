@@ -2,7 +2,7 @@
 
 **One speech API for Pebble watch apps and watchfaces.** Apps send text, and Universal TTS chooses the user's configured provider. Watch apps never store provider keys, talk directly to vendor APIs, or implement resampling/audio transfer.
 
-Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **0.1.1** (initial release candidate).
+Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **0.1.0** (initial release candidate).
 
 ## Quick start — 3 reusable SDK files
 
@@ -159,7 +159,7 @@ GitHub Actions tests all twelve provider adapters and their discovery endpoints 
 
 Automated tests do not guarantee live provider authorization, sound quality, or playback on each Pebble model. SDK files are MIT licensed (sdk/LICENSE).
 
-## SDK 0.1.1: reliable watch acknowledgement protocol
+## SDK: reliable watch acknowledgement protocol
 
 For long spoken responses, the SDK now waits for a **watch-level** `AUDIO_ACK` (with ordered session token and sequence) before advancing each 360-byte packet, and honors `AUDIO_WAIT` when the watch buffer is full. Retried packets cannot be played twice and delayed packets from previous responses are ignored. This replaces the optimistic phone callback and estimated buffer level that could leave long responses silent after their initial audio. The speaker remains open across TTS or BLE gaps and closes after an acknowledged final `AUDIO_STREAM_END`. Both pieces of the SDK must be updated together (JavaScript and C); the plugin's `tts_prepare`, `tts_chunk` and `tts_release` API stays unchanged.
 
