@@ -1,6 +1,6 @@
 {
   "name": "pebble-universal-tts-plugin",
-  "version": "0.1.1",
+  "version": "0.1.0",
   "author": "Eric McCormick",
   "pebble": {
     "displayName": "Universal TTS",
