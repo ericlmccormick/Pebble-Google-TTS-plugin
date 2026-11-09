@@ -2,7 +2,7 @@
 
 **One speech API for Pebble watch apps and watchfaces.** Apps send text, and Universal TTS chooses the user's configured provider. Watch apps never store provider keys, talk directly to vendor APIs, or implement resampling/audio transfer.
 
-Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **1.2.0**.
+Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **0.1.0** (initial release candidate).
 
 ## Quick start — 3 reusable SDK files
 
@@ -86,7 +86,7 @@ Pebble's plugin API is a phone-side preview; see [Pebble plugin development](htt
 
 ## TTS providers and live voice/model discovery
 
-Version 1.2 supports **twelve** REST-based synthesis providers. All of them feed the same verified 8 kHz WAV/ADPCM watch transport; consumers still call only `tts.speak(text)`.
+The first release supports **twelve** REST-based synthesis providers. All of them feed the same verified 8 kHz WAV/ADPCM watch transport; consumers still call only `tts.speak(text)`.
 
 | Provider | Live voice lookup | Live model lookup | Notes |
 | --- | --- | --- | --- |
