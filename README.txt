@@ -1,1 +1,1 @@
-Development plugin PBW. Source commit: 44f1db9fe00591b868e7211669a67052b015c3a4
+Development plugin PBW. Source commit: 6f5472f2ecf0176360955b9b771703c68c28c706
