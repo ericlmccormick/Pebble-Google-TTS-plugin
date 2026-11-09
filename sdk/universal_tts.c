@@ -1,6 +1,6 @@
 /* Pebble Universal TTS watch audio transport SDK v1.
  * MIT licensed. Audio codec/PCM scheduler extracted from the validated
- * Gemini/Universal TTS transport, not its UI, microphone, or conversation logic.
+ * Universal TTS transport, not any application's UI or conversation logic.
  * Message keys: COMMAND, TEXT, CHUNK. App registers one inbox handler and
  * delegates AUDIO_* commands here.
  */
