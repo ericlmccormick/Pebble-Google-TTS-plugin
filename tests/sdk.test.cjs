@@ -59,6 +59,9 @@ const Pebble={
  assert.ok(messages.some(x=>x.COMMAND==='AUDIO_RESET'));
  assert.ok(messages.some(x=>x.COMMAND==='AUDIO_CHUNK'&&Array.isArray(x.CHUNK)&&x.CHUNK.length));
  assert.ok(messages.some(x=>x.COMMAND==='AUDIO_SENTENCE_END'));
+ assert.equal(messages.filter(x=>x.COMMAND==='AUDIO_STREAM_END').length,1);
+ assert.ok(messages.findIndex(x=>x.COMMAND==='AUDIO_STREAM_END')>messages.findIndex(x=>x.COMMAND==='AUDIO_SENTENCE_END'));
+ assert.equal(messages.some(x=>x.COMMAND==='AUDIO_STOP'),false);
  assert.equal(tts.handleMessage({COMMAND:'AUDIO_STATS',TEXT:'frames=3'}),true);
  assert.equal(tts.handleMessage({COMMAND:'OTHER'}),false);
  assert.ok(tts.diagnostics());
