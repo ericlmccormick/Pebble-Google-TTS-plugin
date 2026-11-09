@@ -27,6 +27,10 @@ jobs:
           node tests/plugin.test.cjs
           node tests/settings_ui.test.cjs
           node tests/sdk.test.cjs
+      - name: Verify native speaker streaming lifecycle
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -Itests/mock -Isdk tests/native_audio_lifecycle_test.c -o /tmp/universal-tts-audio-test
+          /tmp/universal-tts-audio-test
       - name: Package directly installable Pebble plugin
         run: |
           set -euo pipefail
