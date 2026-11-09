@@ -1,78 +1,124 @@
-# Universal TTS — Pebble phone plugin
+# Universal TTS for Pebble
 
-**Version 1.0.0**. Universal TTS provides one text-to-speech interface for multiple TTS engines, with reusable audio playback SDKs for Pebble watch applications.
+**One speech API for Pebble watch apps and watchfaces.** Apps send text, and Universal TTS chooses the user's configured provider. Watch apps never store provider keys, talk directly to vendor APIs, or implement resampling/audio transfer.
 
-**Plugin UUID (unchanged):** 2c5edc42-b096-4f76-b284-1f27907e6502
+Plugin UUID: **2c5edc42-b096-4f76-b284-1f27907e6502**. Version: **1.1.0**.
 
-This expands the existing Google TTS plugin while **preserving the same UUID, original Google credentials, original actions and original SDK files**, so apps already using Google TTS can continue unchanged.
+## Quick start — 3 reusable SDK files
 
-## Supported providers
+Copy these files from this repository into your Pebble app:
 
-| Provider | Audio conversion | Configuration | Notes |
-| --- | --- | --- | --- |
-| Google Cloud TTS | LINEAR16 WAV to 8kHz | Cloud API key, voice | WaveNet, Neural2, Chirp3 HD |
-| Gemini TTS | base64 PCM to 8kHz | Google AI Studio key, voice/model | Preview; defaults to gemini-2.5-flash-preview-tts |
-| ElevenLabs | binary PCM16 to 8kHz | API key, voice ID/model | PCM entitlement may vary by subscription |
-| Microsoft Azure Speech | WAV 8kHz | Azure Speech key, region, voice | Native 8kHz WAV |
-| Home Assistant / Piper | REST and WAV | LAN URL, long-lived token, TTS entity | Requires engine to output WAV |
-| OpenAI Speech (temporary) | binary PCM 24kHz to 8kHz | OpenAI API key, model/voice | **Legacy API shuts down Jan 6, 2027** |
+| SDK file | Copy to |
+| --- | --- |
+| sdk/universal_tts.js | src/pkjs/universal_tts.js |
+| sdk/universal_tts.c | src/c/universal_tts.c |
+| sdk/universal_tts.h | src/c/universal_tts.h |
 
-Not yet implemented: AWS Polly (requires AWS SigV4 signing), OpenAI Realtime adapter (requires session/WebSocket or WebRTC integration), automatic provider fallback, and arbitrary external HA hostnames.
+Both watchapps and watchfaces use the same SDK. A hardware speaker is required: on unsupported watches, universal_tts_supported() returns false.
 
-## OpenAI speech deprecation — January 6, 2027
+### 1. Declare permission and AppMessage keys
 
-On October 1, 2026, OpenAI announced its tts-1, tts-1-hd, gpt-4o-mini-tts and specified snapshots will shut down on **January 6, 2027**. Its replacement is **gpt-realtime-2.1-mini using the Realtime API**; that model **cannot** be called using the old /v1/audio/speech endpoint.
+Merge these fields into the existing pebble object of your package.json (retain its other fields, permissions and keys):
 
-This plugin's OpenAI integration uses the **legacy Speech API only** as a temporary option, with a prominent notice in settings. It will not automatically become a Realtime integration. Please choose a different default for long-term use.
-
-Official notice: https://developers.openai.com/api/docs/deprecations
-
-## Compatible plugin action API
-
-Plugin ID: 2c5edc42-b096-4f76-b284-1f27907e6502
-
-Original action names, still supported:
-- tts_prepare
-- tts_chunk
-- tts_release
-- get_config
-
-New generic aliases:
-- universal_prepare
-- universal_chunk
-- universal_release
-- universal_config
-
-The new generic aliases use UniversalTtsSpeak / UniversalTtsRead Pebble permissions. The original action names retain GoogleTtsSpeak / GoogleTtsRead.
-
-**Prepare** accepts text, optional provider and voice, or test_tone; text is limited to 500 characters. Example:
 ~~~json
-{"text":"Hello from Pebble!","provider":"gemini","voice":"Kore"}
+{
+  "manifestVersion": 2,
+  "enableMultiJS": true,
+  "messageKeys": ["COMMAND", "TEXT", "CHUNK"],
+  "usesPermissions": [
+    {"name":"InvokeAction","plugin":"2c5edc42-b096-4f76-b284-1f27907e6502"},
+    {"name":"UniversalTtsSpeak","plugin":"2c5edc42-b096-4f76-b284-1f27907e6502"}
+  ]
+}
 ~~~
-Omit provider and voice to use the user's configured defaults. The result is JSON under result.text with session_id, length, chunk_bytes=6000, format=pcm_s16le_wav, sample_rate=8000, channels=1, bits_per_sample=16, sample_count, wav_checksum, first_chunk, first_chunk_checksum and audio_diagnostics.
 
-**Chunk** accepts session_id and aligned offset (0, 6000, 12000...), returns base64 audio and a checksum. **Release** deletes a session. **Config** returns the default provider, voice, a list of configured provider flags, and OpenAI sunset metadata; it does **not** expose credentials.
+The first permission invokes actions; the second authorizes sending text to the speech plugin. User approval may be required. To check configuration separately, add UniversalTtsRead for the same plugin.
 
-Test tone runs without cloud credentials or billing.
+### 2. One JS speech call
 
-## SDK and migration
+In src/pkjs/index.js:
 
-New apps should use the reusable sdk/universal_tts_audio.js, sdk/universal_tts_audio.c and sdk/universal_tts_audio.h files. These call generic action names while sharing the stable plugin UUID.
+~~~javascript
+const tts = require('./universal_tts').create({
+  Pebble,
+  onError: err => console.log('TTS: ' + err.message),
+  onComplete: () => console.log('Audio transfer finished')
+});
 
-Existing apps may keep sdk/google_tts_audio.js, sdk/google_tts_audio.c and sdk/google_tts_audio.h unchanged. The native C module handles Pebble speaker output; the JS module assembles verified WAV chunks and encodes IMA-ADPCM over AUDIO_* AppMessages. Do not mix with the older Gemini-specific AUDIO_ACK/SEQ watch protocol without an adapter.
+tts.speak('Hello from Pebble!');
+// tts.stop(); // optional cancellation
+~~~
 
-The underlying transport was adapted from the [Home Assistant Bridge SDK](https://github.com/ericlmccormick/Pebble-HA-plug-in/tree/main/sdk).
+No provider names or credentials are passed into speak(). The returned Promise indicates that the transfer **started**, not that the speaker playback completed. The onComplete callback means the encoded transfer finished; watch-side playback may continue briefly.
 
-## Settings and privacy
+To receive a request from the watch:
 
-Configure multiple providers, then choose a default. Each provider stores its own API credential in Pebble secureStorage; the credential is never returned to an app. Voice, model, endpoint and region are non-secret settings stored locally.
+~~~javascript
+Pebble.addEventListener('appmessage', event => {
+  const msg = event.payload || {};
+  if (tts.handleMessage(msg)) return;
+  if (msg.COMMAND === 'SPEAK_REQUEST') tts.speak(String(msg.TEXT || ''));
+});
+~~~
 
-Provider calls send the text being synthesized to the selected cloud service. Fees and API quotas vary. A clear AI-generated speech disclosure is required by some providers. The audio session transport uses 8kHz mono PCM16 WAV, 6000-byte verified chunks, bounded storage, up to three concurrent sessions and a three-minute timeout.
+### 3. Watch-side native receiver
 
-**Home Assistant:** use a private LAN endpoint (prefer HTTPS) and a long-lived access token. The plugin requests WAV using /api/tts_get_url. If the configured TTS engine returns MP3/Opus, it fails clearly rather than playing damaged audio. The returned absolute media URL is ignored to avoid leaking tokens to another host. Pebble's Internet permission is host-scoped; arbitrary external HA hostnames may need new permissions.
+~~~c
+#include "universal_tts.h"
 
-## Build and direct download
+// Initialization:
+universal_tts_init();
+app_message_register_inbox_received(inbox_received);
+app_message_open(4096, 256); // audio AppMessages can exceed 700 bytes
 
-GitHub Actions runs JavaScript syntax checks, multi-provider regression tests, settings checks and PBW packaging. Each successful push to main publishes a directly installable **Universal_TTS_plugin.pbw** to the builds/previews branch. No ZIP extraction is needed. The existing plugin UUID stays constant even though its name is now Universal TTS.
+// In inbox_received:
+if (universal_tts_handle_message(iterator)) return;
 
-The bundled SDK is MIT licensed.
+// On shutdown:
+universal_tts_deinit();
+~~~
+
+Check universal_tts_supported() before offering a voice UI. To trigger speech from C, send COMMAND="SPEAK_REQUEST" and TEXT="the phrase" to PKJS using normal AppMessage; your app's PKJS then calls tts.speak(). The phone-side plugin cannot directly drive the watch speaker, so the native C module is required.
+
+**Complete example:** [Hello Speech watchapp](examples/hello-speech/) includes a SELECT-button watch and PKJS code. Copy in the three reusable SDK files before building. A watchface can use identical code with its own event trigger; do not announce continuously every minute.
+
+Pebble's plugin API is a phone-side preview; see [Pebble plugin development](https://developer.repebble.com/guides/plugins/preview/). Enable the preview, install Universal TTS and configure a provider on the phone.
+
+## TTS providers (chosen by user, not app)
+
+| Provider | User configuration |
+| --- | --- |
+| Google Cloud Text-to-Speech | API key, WaveNet / Neural2 / Chirp voice |
+| Gemini TTS | Google AI Studio key, TTS model, voice |
+| ElevenLabs | API key, model and voice ID (PCM permission may depend on account) |
+| Microsoft Azure Speech | Speech key, region, voice |
+| Home Assistant / Piper | Private-LAN HA URL, long-lived token, WAV-capable TTS entity |
+
+The provider's credentials are stored in Pebble secureStorage and are never returned to the consuming app. The speech text may be transmitted to the selected provider and incur charges. There is no automatic failover to another service.
+
+**OpenAI deprecation:** OpenAI is retiring the old tts-1, tts-1-hd and gpt-4o-mini-tts Speech models on **January 6, 2027** and recommends gpt-realtime-2.1-mini via the Realtime API. The obsolete Speech endpoint is **not present in Universal TTS**. A future Realtime adapter would be a new implementation. [Official retirement notice](https://developers.openai.com/api/docs/deprecations). Amazon Polly is not implemented.
+
+## Public plugin API v1
+
+The JS SDK hides the four low-level actions:
+
+| Action | Arguments | Result |
+| --- | --- | --- |
+| tts_prepare | {text} or {test_tone:true} | Verified 8kHz mono PCM16 WAV session, first chunk and checksums |
+| tts_chunk | {session_id, offset} | Verified base64 chunk; offset aligned to 6000 bytes |
+| tts_release | {session_id} | Frees the session |
+| tts_status | {} | Configured flag, provider, voice, format, sample rate and API version |
+
+All responses are JSON encoded in result.text. Only two permissions are declared: UniversalTtsSpeak (exfiltrating) and UniversalTtsRead (read). Callers cannot override the user's provider or voice. Speech text is limited to 500 characters **per prepared segment**; the SDK automatically segments longer text and queues/prefetches it. Sessions have a three-minute TTL and are bounded to three concurrent sessions.
+
+**SDK public JS API:** create({Pebble, storage?, onError?, onComplete?, onStats?}) returns {speak(text), stop(), handleMessage(payload), diagnostics()}. Optional local storage contains diagnostic data, not credentials.
+
+**SDK native API:** universal_tts_init, universal_tts_deinit, universal_tts_stop, universal_tts_supported, universal_tts_handle_message, universal_tts_set_volume, universal_tts_is_playing.
+
+Audio uses a verified canonical WAV format followed by phone-side IMA-ADPCM encoding for Bluetooth; the watch decodes and plays the audio. Watch hardware without a speaker cannot output speech. Home Assistant currently requires a TTS engine that returns WAV; MP3/Opus is rejected instead of producing audio noise.
+
+## Builds and tests
+
+GitHub Actions tests the five provider adapters using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Google-TTS-plugin/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
+
+Automated tests do not guarantee live provider authorization, sound quality, or playback on each Pebble model. SDK files are MIT licensed (sdk/LICENSE).
