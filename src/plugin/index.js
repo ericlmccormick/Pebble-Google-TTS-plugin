@@ -271,13 +271,20 @@ function ttsChunk(args){
  * transport above remains byte-compatible with existing Google TTS clients.
  * Credentials are always kept in Pebble.secureStorage and never returned.
  */
-var PROVIDERS=['google','gemini','elevenlabs','azure','homeassistant'];
+var PROVIDERS=['google','gemini','elevenlabs','azure','homeassistant','deepgram','cartesia','speechify','smallest','inworld','rime','fish'];
 var DEFAULTS={
   google:{voice:'en-US-Wavenet-F',model:''},
   gemini:{voice:'Kore',model:'gemini-2.5-flash-preview-tts'},
   elevenlabs:{voice:'JBFqnCBsd6RMkjVDRZzb',model:'eleven_flash_v2_5'},
   azure:{voice:'en-US-JennyNeural',model:''},
-  homeassistant:{voice:'tts.piper',model:''}
+  homeassistant:{voice:'tts.piper',model:''},
+  deepgram:{voice:'aura-2-thalia-en',model:''},
+  cartesia:{voice:'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',model:'sonic-3.6'},
+  speechify:{voice:'geffen_32',model:'simba-3.5'},
+  smallest:{voice:'kaitlyn',model:'lightning_v3.1_pro'},
+  inworld:{voice:'Dennis',model:'inworld-tts-2'},
+  rime:{voice:'astra',model:''},
+  fish:{voice:'default',model:'s2.1-pro-free'}
 };
 var DEFAULT_PROVIDER_KEY='universal_tts_default_provider_v1';
 function selectedProvider(){var p=localStorage.getItem(DEFAULT_PROVIDER_KEY)||'google';return PROVIDERS.indexOf(p)>=0?p:'google';}
@@ -285,7 +292,7 @@ function keyFor(p){return p==='google'?KEY:'universal_tts_'+p+'_key_v1';}
 function propFor(p,name){return 'universal_tts_'+p+'_'+name+'_v1';}
 function optionFor(p,name){return localStorage.getItem(propFor(p,name))||(DEFAULTS[p]&&DEFAULTS[p][name])||'';}
 function validatedProvider(p){return typeof p==='string'&&PROVIDERS.indexOf(p)>=0;}
-function providerName(p){return {google:'Google Cloud',gemini:'Gemini TTS',elevenlabs:'ElevenLabs',azure:'Microsoft Azure',homeassistant:'Home Assistant'}[p]||p;}
+function providerName(p){return {google:'Google Cloud',gemini:'Gemini TTS',elevenlabs:'ElevenLabs',azure:'Microsoft Azure',homeassistant:'Home Assistant',deepgram:'Deepgram Aura',cartesia:'Cartesia Sonic',speechify:'Speechify',smallest:'Smallest AI',inworld:'Inworld AI',rime:'Rime Coda',fish:'Fish Audio'}[p]||p;}
 function validSetting(s){return typeof s==='string'&&s.length>0&&s.length<=160&&/^[\w.-]+$/.test(s);}
 function validEndpoint(url){
   if(typeof url!=='string'||url.length>240)return false;
@@ -308,6 +315,7 @@ async function providerSummary(){
       voice:optionFor(p,'voice'),model:optionFor(p,'model'),
       region:p==='azure'?optionFor(p,'region'):undefined,
       endpoint:p==='homeassistant'?optionFor(p,'endpoint'):undefined,
+      language:p==='rime'?optionFor(p,'language')||'en':undefined,
       audio_format:'pcm_s16le_wav'});
   }
   return arr;
@@ -413,6 +421,72 @@ async function synthProvider(p,text,voice,token){
     if(result.bytes.length<44||String.fromCharCode.apply(null,Array.prototype.slice.call(result.bytes,0,4))!=='RIFF')
       return failure('PLUGIN_UNAVAILABLE','Home Assistant did not return WAV; select a TTS engine supporting preferred_format=wav.');
     parsed=bytesToPcm(result.bytes,16000);
+  }else if(p==='deepgram'){
+    if(!/^aura(?:-2)?-[a-z0-9-]+$/.test(voice))
+      return failure('INVALID_ARGS','Select an Aura voice from the Deepgram catalog; Flux requires a separate streaming API.');
+    response=await fetch('https://api.deepgram.com/v1/speak?model='+encodeURIComponent(voice)+'&encoding=linear16&container=wav&sample_rate=8000',{
+      method:'POST',headers:{Authorization:'Token '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({text:text})});
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,8000);
+  }else if(p==='cartesia'){
+    model=optionFor(p,'model');
+    if(!validSetting(voice)||!validSetting(model))return failure('INVALID_ARGS','Select a Cartesia voice and model.');
+    response=await fetch('https://api.cartesia.ai/tts/bytes',{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Cartesia-Version':'2026-08-14','Content-Type':'application/json'},
+      body:JSON.stringify({model_id:model,transcript:text,voice:voice,
+        output_format:{container:'wav',encoding:'pcm_s16le',sample_rate:16000}})});
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,16000);
+  }else if(p==='speechify'){
+    model=optionFor(p,'model');
+    if(!validSetting(voice)||!validSetting(model))return failure('INVALID_ARGS','Select a Speechify voice and model.');
+    response=await fetch('https://api.speechify.ai/v1/audio/speech',{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({input:text,voice_id:voice,model:model,audio_format:'pcm',output_format:'pcm_16000'})});
+    if(!response.ok)return remoteFailure(response.status,p);
+    result=await response.json();
+    if(!result||typeof result.audio_data!=='string')
+      return failure('PLUGIN_UNAVAILABLE','Speechify returned no PCM audio.');
+    bytes=base64Decode(result.audio_data);
+    parsed=bytesToPcm(bytes,16000);
+  }else if(p==='smallest'){
+    model=optionFor(p,'model');
+    if(!validSetting(voice)||!validSetting(model))return failure('INVALID_ARGS','Select a Smallest AI voice and model.');
+    response=await fetch('https://api.smallest.ai/waves/v1/tts',{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Accept:'audio/wav'},
+      body:JSON.stringify({text:text,voice_id:voice,model:model,output_format:'wav',sample_rate:16000})});
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,16000);
+  }else if(p==='inworld'){
+    model=optionFor(p,'model');
+    if(!validSetting(voice)||!validSetting(model))return failure('INVALID_ARGS','Select an Inworld voice and model.');
+    response=await fetch('https://api.inworld.ai/tts/v1/voice',{
+      method:'POST',headers:{Authorization:'Basic '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({text:text,voiceId:voice,modelId:model,
+        audioConfig:{audioEncoding:'WAV',sampleRateHertz:16000}})});
+    if(!response.ok)return remoteFailure(response.status,p);
+    result=await response.json();
+    if(!result||typeof result.audioContent!=='string')
+      return failure('PLUGIN_UNAVAILABLE','Inworld returned no WAV audio.');
+    parsed=bytesToPcm(base64Decode(result.audioContent),16000);
+  }else if(p==='rime'){
+    if(!validSetting(voice))return failure('INVALID_ARGS','Select a Rime voice.');
+    response=await fetch('https://coda.api.rime.ai/',{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',Accept:'audio/wav'},
+      body:JSON.stringify({text:text,speaker:voice,lang:optionFor(p,'language')||'en',samplingRate:16000})});
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,16000);
+  }else if(p==='fish'){
+    model=optionFor(p,'model');
+    if(!validSetting(model))return failure('INVALID_ARGS','Select a Fish Audio synthesis model.');
+    body={text:text,format:'wav',sample_rate:16000};
+    if(voice!=='default')body.reference_id=voice;
+    response=await fetch('https://api.fish.audio/v1/tts',{
+      method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',model:model},
+      body:JSON.stringify(body)});
+    result=await binaryResponse(response,p);if(!result.ok)return result;
+    parsed=bytesToPcm(result.bytes,16000);
   }else{return failure('INVALID_ARGS','Unknown TTS provider.');}
   if(!parsed.ok)return failure('PLUGIN_UNAVAILABLE',parsed.error||parsed.message||'Invalid speech audio.');
   var pcm=resample8k(parsed.samples,parsed.rate);
@@ -481,7 +555,8 @@ Pebble.registerConfigHandler(async function(message,respond){
     localStorage.setItem(propFor(p,'voice'),m.voice);
     if(p==='azure'&&typeof m.region==='string')localStorage.setItem(propFor(p,'region'),m.region);
     if(p==='homeassistant'&&typeof m.endpoint==='string')localStorage.setItem(propFor(p,'endpoint'),m.endpoint);
-    if((p==='gemini'||p==='elevenlabs')&&typeof m.model==='string'&&m.model)
+    if(p==='rime'&&typeof m.language==='string'&&/^[a-z]{2}(?:-[A-Z]{2})?$/.test(m.language))localStorage.setItem(propFor(p,'language'),m.language);
+    if(typeof m.model==='string'&&m.model)
       localStorage.setItem(propFor(p,'model'),m.model);
     if(m.make_default!==false)localStorage.setItem(DEFAULT_PROVIDER_KEY,p);
     respond({ok:true,provider:p,default_provider:selectedProvider(),voice:m.voice,configured:await hasProviderCredentials(p)});
@@ -493,6 +568,7 @@ Pebble.registerConfigHandler(async function(message,respond){
     localStorage.removeItem(propFor(p,'model'));
     localStorage.removeItem(propFor(p,'region'));
     localStorage.removeItem(propFor(p,'endpoint'));
+    localStorage.removeItem(propFor(p,'language'));
     cleanTtsSessions().forEach(deleteTtsSession);
     localStorage.removeItem(TTS_INDEX_KEY);
     respond({ok:true,provider:p});return;
