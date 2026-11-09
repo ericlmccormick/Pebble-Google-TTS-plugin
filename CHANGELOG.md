@@ -14,4 +14,4 @@ Universal TTS is a provider-independent speech plugin for compatible Pebble watc
 
 **Testing:** Automated provider simulations, manifest verification, transport tests and settings-page syntax checks pass. Live authentication for all providers and playback on physical devices remain to be verified before store submission.
 
-**Branding:** The first-release logo is still being selected. No logo asset is included in the v0.1.0 PBW yet.
+**Branding:** Approved transparent Universal TTS icon has 144×144 and 80×80 store/site PNGs and a 25×25 watch-menu variant. Source SVG is included. Plugin-only PBWs do not have a watch launcher icon; the Hello Speech watchapp demonstrates the 25×25 menu resource.

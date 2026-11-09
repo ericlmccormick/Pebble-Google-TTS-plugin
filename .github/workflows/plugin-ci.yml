@@ -31,6 +31,24 @@ jobs:
         run: |
           cc -std=c11 -Wall -Wextra -Werror -Itests/mock -Isdk tests/native_audio_lifecycle_test.c -o /tmp/universal-tts-audio-test
           /tmp/universal-tts-audio-test
+      - name: Render and validate transparent logo sizes
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/universal-tts-icon-venv
+          /tmp/universal-tts-icon-venv/bin/pip install --quiet cairosvg Pillow
+          /tmp/universal-tts-icon-venv/bin/python scripts/render_logos.py
+          /tmp/universal-tts-icon-venv/bin/python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          for size in (144, 80, 25):
+              p=Path('assets/universal_tts_logo_%s.png'%size)
+              im=Image.open(p)
+              assert im.size==(size,size) and im.mode=='RGBA'
+              assert im.getpixel((0,0))[3]==0
+          assert Image.open('assets/universal_tts_logo_25_bw.png').size==(25,25)
+          assert Image.open('examples/hello-speech/resources/menu_icon.png').size==(25,25)
+          print('Validated TTS icon PNGs at 144, 80 and 25 px')
+          PY
       - name: Package directly installable Pebble plugin
         run: |
           set -euo pipefail
@@ -63,12 +81,25 @@ jobs:
           name: pebble-plugin-pbw
           path: build/*.pbw
           if-no-files-found: error
+      - name: Save generated PNG assets to main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add assets/universal_tts_logo_*.png examples/hello-speech/resources/menu_icon.png
+          if ! git diff --cached --quiet; then
+            git commit -m "assets: include official TTS icon sizes in source"
+            git push origin HEAD:main
+          fi
       - name: Prepare direct-download PBW
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           mkdir -p /tmp/pebble-plugin-preview
           cp build/*.pbw /tmp/pebble-plugin-preview/Universal_TTS_plugin.pbw
+          mkdir -p /tmp/pebble-plugin-preview/logos
+          cp assets/universal_tts_logo_*.png /tmp/pebble-plugin-preview/logos/
       - name: Publish direct-download PBW branch
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
@@ -78,6 +109,7 @@ jobs:
           # PBW was already copied to /tmp; remove untracked build output
           # before switching to the preview branch (which might have stale build files).
           rm -rf build
+          git reset --hard
           if git ls-remote --exit-code --heads origin builds/previews >/dev/null; then
             git fetch origin builds/previews
             git switch -C builds/previews origin/builds/previews
@@ -88,8 +120,10 @@ jobs:
           git rm -f --ignore-unmatch Google_Cloud_TTS_plugin.pbw
           git rm -rf --ignore-unmatch build
           cp /tmp/pebble-plugin-preview/Universal_TTS_plugin.pbw ./
+          mkdir -p logos
+          cp /tmp/pebble-plugin-preview/logos/*.png logos/
           printf 'Development plugin PBW. Source commit: %s\n' "$GITHUB_SHA" > README.txt
-          git add Universal_TTS_plugin.pbw README.txt
+          git add Universal_TTS_plugin.pbw README.txt logos/*.png
           if ! git diff --cached --quiet; then
             git commit -m "build: plugin preview from ${GITHUB_SHA}"
             git push origin HEAD:builds/previews

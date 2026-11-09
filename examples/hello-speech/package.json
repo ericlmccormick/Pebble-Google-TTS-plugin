@@ -28,7 +28,15 @@
       }
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "name": "MENU_ICON",
+          "type": "bitmap",
+          "file": "resources/menu_icon.png",
+          "menuIcon": true,
+          "memoryFormat": "1Bit"
+        }
+      ]
     }
   }
 }
