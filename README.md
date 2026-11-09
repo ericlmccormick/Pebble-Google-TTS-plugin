@@ -141,6 +141,12 @@ The SDK now uses an explicit end-of-response handshake. The JavaScript SDK sends
 
 **Copy the current JavaScript and C SDK files together.** Mixing an old native receiver with a new sender, or vice versa, can cut off playback between sentences. Both SDK files retain the same public `speak(text)` API and plugin action names, so provider integrations do not change. The SDK now also includes host-simulated native speaker lifecycle tests.
 
+## Branding and icon assets
+
+The official transparent TTS/speaker logo lives in [src/icon.svg](src/icon.svg). The automated build renders [144×144, 80×80 and 25×25 PNGs](assets/) with clear contrast on light and dark backgrounds, plus a monochrome watch-menu variant. The 25×25 launcher resource is wired into the [Hello Speech example app](examples/hello-speech/).
+
+Universal TTS is a **plugin-only** package and does not itself create a watch launcher entry. Developers who want the 25×25 icon on a watch app can include it as a `resources.media` `menuIcon` resource; the example demonstrates the required manifest entry. The 144/80 icons are for the store/site listing.
+
 ## Builds and tests
 
 GitHub Actions tests all twelve provider adapters and their discovery endpoints using synthetic responses, the general SDK audio transfer, session integrity, permissions and settings UI, and packages the .pbw. Successful main builds produce a single [direct install PBW](https://raw.githubusercontent.com/ericlmccormick/Pebble-Universal-TTS/builds/previews/Universal_TTS_plugin.pbw) in builds/previews, with no ZIP extraction.
