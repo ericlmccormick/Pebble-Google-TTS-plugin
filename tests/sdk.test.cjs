@@ -40,7 +40,9 @@ const Pebble={
  }
 };
 (async()=>{
- const tts=lib.create({Pebble,onComplete:finished,onError:rejected});
+ const diagStore=new Map();
+ const storage={getItem:k=>diagStore.get(k)||null,setItem:(k,v)=>diagStore.set(k,String(v))};
+ const tts=lib.create({Pebble,storage,onComplete:finished,onError:rejected});
  await assert.rejects(tts.speak(''),/must not be empty/i);
  await tts.speak('Hello from Pebble!');
  await Promise.race([complete,new Promise((_,reject)=>setTimeout(()=>reject(Error('TTS transport did not finish')),5000))]);
