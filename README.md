@@ -116,6 +116,12 @@ The first release supports **twelve** REST-based synthesis providers. All of the
 
 Discovery and synthesis use fixed, documented provider hosts. The only configurable host is Home Assistant, validated as a LAN address or HTTPS URL. Keys are never included in normal plugin status responses.
 
+## Source category for Pebble plugin discovery
+
+Universal TTS declares the **`tts`** source category (item **`configured`**) following the same manifest pattern as the published agent plugins. This is a **read-only readiness source**, not an additional text-synthesis method. It exposes one instance (`default`) with `name`, `configured`, `provider`, and `voice`. It requires `UniversalTtsRead` permission and does not expose credentials. Consumers still generate speech through the existing `tts_prepare`/`tts_chunk`/`tts_release` actions and the `tts.speak(text)` SDK.
+
+This source category is independent of the **Appstore listing category**. If Pebble asks for a listing category, **Utilities** fits a cross-app text-to-speech service.
+
 ## Public plugin API v1
 
 The JS SDK hides the four low-level actions:
