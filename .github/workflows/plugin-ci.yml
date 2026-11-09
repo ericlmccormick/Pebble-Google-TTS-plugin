@@ -71,6 +71,9 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # PBW was already copied to /tmp; remove untracked build output
+          # before switching to the preview branch (which might have stale build files).
+          rm -rf build
           if git ls-remote --exit-code --heads origin builds/previews >/dev/null; then
             git fetch origin builds/previews
             git switch -C builds/previews origin/builds/previews
