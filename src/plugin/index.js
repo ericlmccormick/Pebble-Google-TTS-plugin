@@ -429,7 +429,7 @@ async function discoverCatalog(p,kind,cursor,model){
   }else if(p==='deepgram'){
     url='https://api.deepgram.com/v1/models';headers={Authorization:'Token '+token};
   }else if(p==='cartesia'){
-    headers={Authorization:'Bearer '+token,'Cartesia-Version':'2026-08-14'};
+    headers={'X-API-Key':token,'Cartesia-Version':'2026-08-14'};
     if(kind==='voices'){
       url='https://api.cartesia.ai/voices?limit=60'+(cursor?'&starting_after='+encoded(cursor):'');
       paged=true;
